@@ -1,17 +1,59 @@
 <script setup>
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import Icon from './Icon.vue'
 import MetricBar from './MetricBar.vue'
-import { online, percent, bytes, present, probes, probeLabel, probeText, priceText } from '../utils/metrics.js'
-import { t } from '../composables/useTheme.js'
+import ProbeBuckets from './ProbeBuckets.vue'
+import { online, percent, bytes, present, probes, probeLabel, probeText } from '../utils/metrics.js'
+import { osIcon, validRegion, uptimeDays, daysLeft, traffic, billing, loadValues, windowValues, probeTone } from '../utils/display.js'
+import { favorite, toggleFavorite } from '../composables/usePreferences.js'
+import { t, language } from '../composables/useTheme.js'
 const props = defineProps({ server: Object, site: Object, siteIndex: Number, now: Number, compact: Boolean })
+const router = useRouter()
 const isOnline = computed(() => online(props.server, props.now))
+const transfer = computed(() => traffic(props.server))
+const price = computed(() => props.site.sysConfig.show_price === true ? billing(props.server, language.value) : '')
+const uptime = computed(() => uptimeDays(props.server.boot_time, props.now))
+const expiry = computed(() => daysLeft(props.server.expire_date, props.now))
+const rows = computed(() => probes.filter(key => present(props.server[`ping_${key}`]) || present(props.server[`loss_${key}`])))
+const three = computed(() => rows.value.filter(key => ['ct', 'cu', 'cm'].includes(key)))
 const windows = computed(() => props.site.sysConfig.show_three_net_details === true && (props.server.ping?.length || props.server.loss?.length))
-const probeRows = computed(() => probes.filter(key => present(props.server[`ping_${key}`]) || present(props.server[`loss_${key}`]) || (windows.value && [...(props.server.ping || []), ...(props.server.loss || [])].some(row => present(row[key])))))
-const osFile = computed(() => {
-  const os = String(props.server.os || '').toLowerCase()
-  if (os.includes('alpine')) return 'os-alpine.webp'
-  for (const name of ['ubuntu', 'debian', 'windows', 'centos', 'arch', 'fedora', 'macos', 'openwrt', 'rocky']) if (os.includes(name)) return `os-${name}.svg`
-  return ''
-})
+const ping = computed(() => windowValues(props.server, 'ping'))
+const loss = computed(() => windowValues(props.server, 'loss'))
+const latest = values => [...values].reverse().find(present)
+const loads = computed(() => loadValues(props.server.load_avg).map(value => value.toFixed(2)).join(', '))
+const open = () => router.push({ path: `/server/${props.server.id}`, query: { site: props.siteIndex } })
 </script>
-<template><RouterLink :to="{ path: `/server/${server.id}`, query: { site: siteIndex } }" class="server-card" :class="{ compact }"><div class="card-heading"><div class="node-icon"><img v-if="/^[a-zA-Z]{2}$/.test(server.region || '')" :src="`${site.base}/flags/${server.region.toLowerCase()}.svg`" :alt="server.region"><span v-else>▤</span></div><div class="node-name"><h3>{{ server.name || server.id }}</h3><span class="muted">{{ server.region || '—' }} <span class="separator">/</span> {{ server.server_group || '—' }}</span></div><span class="status" :class="{ offline: !isOnline }"><i></i>{{ t(isOnline ? 'online' : 'offline') }}</span></div><div class="hardware"><span><img v-if="osFile" :src="`${site.base}/os-icons/${osFile}`" alt="">{{ server.os || '—' }}</span><span>{{ server.cpu_cores || '—' }} vCPU <span class="separator">·</span> {{ bytes(Number(server.ram_total) * 1048576) }}</span></div><div class="resources"><MetricBar :label="t('cpu')" :value="Number(server.cpu)"/><MetricBar :label="t('ram')" :value="percent(server.ram_used, server.ram_total)"/><MetricBar :label="t('disk')" :value="percent(server.disk_used, server.disk_total)"/></div><div class="network-pair"><div><span class="muted">↓ {{ t('download') }}</span><strong>{{ bytes(server.net_in_speed) }}<small>/s</small></strong></div><div><span class="muted">↑ {{ t('upload') }}</span><strong>{{ bytes(server.net_out_speed) }}<small>/s</small></strong></div></div><div v-if="probeRows.length" class="probe-list"><div v-for="key in probeRows" :key="key" class="probe-row"><span>{{ probeLabel(site.config, key) }}</span><div v-if="windows" class="buckets"><i v-for="(point, i) in server.ping || []" :key="i" :class="{ timeout: point[key] === null, absent: !present(point[key]) }" :style="{ opacity: present(point[key]) ? 1 : 0 }" :title="probeText(point[key], ' ms', t('timeout'))"></i></div><strong v-if="present(server[`ping_${key}`])">{{ probeText(server[`ping_${key}`], ' ms', t('timeout')) }}</strong><span v-if="present(server[`loss_${key}`])" class="loss">{{ probeText(server[`loss_${key}`], '%', t('timeout')) }}</span><div v-if="windows && server.loss?.length" class="buckets loss-buckets"><i v-for="(point, i) in server.loss" :key="i" :class="{ timeout: point[key] === null || Number(point[key]) > 0 }" :style="{ opacity: present(point[key]) ? 1 : 0 }" :title="probeText(point[key], '%', t('timeout'))"></i></div></div></div><div class="card-footer"><span>{{ server.arch || '—' }}</span><span v-if="site.sysConfig.show_price && priceText(server.price)">{{ priceText(server.price) === 'Free' ? t('free') : priceText(server.price) }}</span><span v-else>{{ server.ip_v4 === '1' ? 'IPv4' : '' }} {{ server.ip_v6 === '1' ? 'IPv6' : '' }}</span><span>↗</span></div></RouterLink></template>
+<template>
+  <article class="server-card" :class="{ compact, 'is-offline': !isOnline }" role="link" tabindex="0" @click="open" @keydown.enter.self="open">
+    <div class="card-heading">
+      <span class="state-dot" :class="{ offline: !isOnline }" :title="t(isOnline ? 'online' : 'offline')"></span>
+      <img v-if="osIcon(server.os)" class="os-icon" :src="`${site.base}/os-icons/${osIcon(server.os)}`" :alt="server.os">
+      <h3 class="node-name" :title="server.name || server.id">{{ server.name || server.id }}</h3>
+      <button class="favorite-button" :class="{ selected: favorite(siteIndex, server.id) }" :aria-label="t('favorite')" :aria-pressed="favorite(siteIndex, server.id)" @click.stop="toggleFavorite(siteIndex, server.id)"><Icon name="star" :size="17"/></button>
+      <img v-if="validRegion(server.region)" class="flag-icon" :src="`${site.base}/flags/${server.region.toLowerCase()}.svg`" :alt="server.region">
+    </div>
+    <div class="card-subtitle"><span>{{ t(isOnline ? 'online' : 'offline') }}<template v-if="uptime !== null"> {{ uptime }} {{ t('days') }}</template></span><span v-if="price">{{ price }}</span><span v-else-if="uptime === null">{{ server.server_group || server.arch }}</span></div>
+    <div class="resources">
+      <MetricBar :label="t('cpu')" :value="Number(server.cpu)" :detail="loads || `${server.cpu_cores || '—'} vCPU`"/>
+      <MetricBar :label="t('ram')" :value="percent(server.ram_used, server.ram_total)" :detail="`${bytes(Number(server.ram_used) * 1048576)} / ${bytes(Number(server.ram_total) * 1048576)}`"/>
+      <MetricBar :label="t('disk')" :value="percent(server.disk_used, server.disk_total)" :detail="`${bytes(Number(server.disk_used) * 1048576)} / ${bytes(Number(server.disk_total) * 1048576)}`"/>
+      <MetricBar v-if="site.sysConfig.show_tf !== false" :label="t('transfer')" :value="transfer.percentage" :unlimited="!transfer.limit" :detail="transfer.detail" green/>
+    </div>
+    <div class="card-facts">
+      <div><Icon name="upload" :size="13"/><strong>{{ bytes(server.net_out_speed) }}/s</strong></div>
+      <div><Icon name="upload" :size="13"/><span>{{ bytes(server.net_tx) }}</span></div>
+      <div v-if="site.sysConfig.show_expire === true && expiry !== null" :class="{ warning: expiry <= 14 }"><Icon name="calendar" :size="13"/><span>{{ t('remaining') }} {{ expiry }} {{ t('days') }}</span></div>
+      <div v-else><Icon name="clock" :size="13"/><span>{{ uptime === null ? '—' : `${uptime} ${t('days')}` }}</span></div>
+      <div><Icon name="download" :size="13"/><strong>{{ bytes(server.net_in_speed) }}/s</strong></div>
+      <div><Icon name="download" :size="13"/><span>{{ bytes(server.net_rx) }}</span></div>
+      <div><Icon name="server" :size="13"/><span>{{ server.arch || '—' }}</span></div>
+    </div>
+    <div v-if="rows.length" class="probe-list">
+      <div v-if="three.length" class="three-net-line"><span>{{ t('threeNet') }}</span><div><span v-for="key in three" :key="key" class="probe-row" :class="probeTone(server[`ping_${key}`])" :title="probeLabel(site.config, key)"><template v-if="present(server[`ping_${key}`])">{{ probeText(server[`ping_${key}`], ' ms', t('timeout')) }}</template><small v-if="present(server[`loss_${key}`]) && (server[`loss_${key}`] === null || !windows || !present(server[`ping_${key}`]))" class="probe-loss" :class="probeTone(server[`loss_${key}`], true)"> · {{ probeText(server[`loss_${key}`], '%', t('timeout')) }}</small></span></div></div>
+      <div v-if="windows" class="probe-panels"><div v-for="field in ['ping', 'loss']" :key="field" class="probe-panel"><div><span>{{ t(field === 'ping' ? 'latency' : 'loss') }}</span><strong :class="probeTone(latest(field === 'ping' ? ping : loss), field === 'loss')">{{ probeText(latest(field === 'ping' ? ping : loss), field === 'ping' ? ' ms' : '%', t('timeout')) }}</strong></div><ProbeBuckets :values="field === 'ping' ? ping : loss" :loss="field === 'loss'"/></div></div>
+      <div v-for="key in rows.filter(key => !three.includes(key))" :key="key" class="extra-probe"><span>{{ probeLabel(site.config, key) }}</span><strong v-if="present(server[`ping_${key}`])">{{ probeText(server[`ping_${key}`], ' ms', t('timeout')) }}</strong><small v-if="present(server[`loss_${key}`])">{{ probeText(server[`loss_${key}`], '%', t('timeout')) }}</small></div>
+    </div>
+    <div v-if="server.server_group || server.ip_v4 === '1' || server.ip_v6 === '1'" class="card-tags"><span v-if="server.server_group">{{ server.server_group }}</span><span v-if="server.ip_v4 === '1'">IPv4</span><span v-if="server.ip_v6 === '1'">IPv6</span></div>
+  </article>
+</template>

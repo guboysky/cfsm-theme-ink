@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-const server = { id: 'one', name: 'Tokyo Edge', region: 'JP', server_group: 'Production', cpu: 12, cpu_cores: 4, ram_total: 4096, ram_used: 1024, disk_total: 80000, disk_used: 12000, swap_total: 2048, swap_used: 0, net_in_speed: 1024, net_out_speed: 512, net_rx: 90000, net_tx: 40000, arch: 'amd64', os: 'Debian', last_updated: Date.now(), ping_ct: 0, loss_ct: 0, ping_cu: null, loss_cu: null, ping_cm: false, loss_cm: false, ping: [{ ts: Date.now(), ct: 0, cu: null, cm: false }], loss: [{ ts: Date.now(), ct: 0, cu: null, cm: false }] }
+const server = { id: 'one', name: 'Tokyo Edge', region: 'JP', server_group: 'Production', cpu: 12, cpu_cores: 4, cpu_info: 'AMD EPYC 7B13', kernel_version: '6.12.41-amd64', boot_time: Date.now() - 93 * 86400000, load_avg: '0.07, 0.03, 0.00', ram_total: 4096, ram_used: 1024, disk_total: 80000, disk_used: 12000, swap_total: 2048, swap_used: 0, net_in_speed: 1024, net_out_speed: 512, net_rx: 274 * 1024 ** 3, net_tx: 393 * 1024 ** 3, net_rx_monthly: 27 * 1024 ** 3, net_tx_monthly: 3 * 1024 ** 3, traffic_limit: 1024, processes: 94, tcp_conn: 28, udp_conn: 2, price: '33.15', currency: '$', billing_cycle: 'month', expire_date: new Date(Date.now() + 19 * 86400000).toISOString(), arch: 'amd64', os: 'Debian', last_updated: Date.now(), ping_ct: 0, loss_ct: 0, ping_cu: null, loss_cu: null, ping_cm: false, loss_cm: false, ping: [{ ts: Date.now(), ct: 0, cu: null, cm: false }], loss: [{ ts: Date.now(), ct: 0, cu: null, cm: false }] }
 async function mock(page, { isPublic = true, turnstile = false, loggedIn = false, timeout = 0, rejectOnce = false, nodes = 1, multiSite = false } = {}) {
   const calls = [], sockets = [], apiErrors = [], pageErrors = []
   page.on('pageerror', error => pageErrors.push(error.message))
@@ -9,8 +9,12 @@ async function mock(page, { isPublic = true, turnstile = false, loggedIn = false
     document.addEventListener('test-hidden', () => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')) })
     document.addEventListener('test-visible', () => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')) })
   }, { loggedIn })
-  await page.route('**/flags/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg"/>' }))
-  await page.route('**/os-icons/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg"/>' }))
+  await page.route('**/flags/**', route => {
+    const code = route.request().url().split('/').at(-1).slice(0, 2)
+    const graphics = { jp: '<rect width="24" height="16" fill="white"/><circle cx="12" cy="8" r="5" fill="#c62c43"/>', de: '<path fill="#222" d="M0 0h24v6H0z"/><path fill="#cf3545" d="M0 6h24v5H0z"/><path fill="#f1c453" d="M0 11h24v5H0z"/>', hk: '<rect width="24" height="16" fill="#db3345"/><path fill="white" d="m12 3 1 3 3-1-2 3 2 3-3-1-1 3-1-3-3 1 2-3-2-3 3 1z"/>', sg: '<rect width="24" height="8" fill="#dd4351"/><rect y="8" width="24" height="8" fill="white"/>', us: '<rect width="24" height="16" fill="white"/><path stroke="#c8515d" stroke-width="2" d="M0 1h24M0 5h24M0 9h24M0 13h24"/><path fill="#4d638e" d="M0 0h11v9H0z"/>', gb: '<rect width="24" height="16" fill="#425b8b"/><path stroke="white" stroke-width="4" d="m0 0 24 16M24 0 0 16M12 0v16M0 8h24"/><path stroke="#d44354" stroke-width="2" d="M12 0v16M0 8h24"/>' }
+    return route.fulfill({ contentType: 'image/svg+xml', body: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 16">${graphics[code] || graphics.jp}</svg>` })
+  })
+  await page.route('**/os-icons/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M15 7c0-6-12-7-12 2 0 9 14 11 14 1 0-7-11-8-11-1 0 5 8 6 8 0 0-4-6-4-5 0" fill="none" stroke="#be516b" stroke-width="1.5"/></svg>' }))
   let rejected = false
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), headers = request.headers()
@@ -19,9 +23,9 @@ async function mock(page, { isPublic = true, turnstile = false, loggedIn = false
     if (!isPublic && !headers.authorization) return route.fulfill({ status: 401, json: { error: 'Unauthorized' } })
     if (turnstile && ((!headers['x-turnstile-token'] && !headers['x-turnstile-verified']) || (rejectOnce && !rejected))) { rejected = true; return route.fulfill({ status: 403, json: { error: 'Turnstile' } }) }
     const verified = turnstile ? { turnstile_verified: 'cached-verified' } : {}
-    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true }, ...verified } })
+    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: index === 4 ? 82 : 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true, show_price: true, show_expire: true, show_tf: true }, ...verified } })
     if (url.pathname === '/api/server') return route.fulfill({ json: { ...server, ...verified } })
-    if (url.pathname === '/api/history/all') return route.fulfill({ json: [{ ...server, timestamp: Date.now() - 10000 }, { ...server, cpu: 25, timestamp: Date.now() }] })
+    if (url.pathname === '/api/history/all') return route.fulfill({ json: Array.from({ length: 24 }, (_, index) => ({ ...server, cpu: 12 + Math.sin(index / 3) * 8, net_in_speed: 65536 + Math.sin(index) * 15000, net_out_speed: 4096 + index * 30, tcp_conn: 28 + Math.floor(Math.sin(index) * 5), processes: 94 + Math.floor(Math.cos(index) * 4), timestamp: Date.now() - (23 - index) * 20000 })) })
     if (url.pathname === '/api/theme_options') return route.fulfill({ json: { success: true, ...verified } })
     apiErrors.push(url.pathname); return route.fulfill({ status: 404 })
   })
@@ -169,9 +173,14 @@ test('desktop dark/light and mobile layouts', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto('/')
   await expect(page.locator('.server-card')).toHaveCount(6)
-  await page.screenshot({ path: 'artifacts/ink-dark.png', fullPage: true })
+  await page.screenshot({ path: 'artifacts/ink-dark.png', fullPage: true, animations: 'disabled' })
   await page.evaluate(() => document.documentElement.classList.remove('dark'))
-  await page.screenshot({ path: 'artifacts/ink-light.png', fullPage: true })
+  await expect(page.locator('.server-card').first()).toHaveCSS('border-color', 'rgb(233, 236, 242)')
+  await page.screenshot({ path: 'artifacts/ink-light.png', fullPage: true, animations: 'disabled' })
+  await page.getByRole('button', { name: '列表视图', exact: true }).click()
+  await expect(page.locator('.node-table tbody tr')).toHaveCount(6)
+  await page.screenshot({ path: 'artifacts/ink-list.png', fullPage: true, animations: 'disabled' })
+  await page.getByRole('button', { name: '卡片视图', exact: true }).click()
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: 'artifacts/ink-mobile.png', fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -179,5 +188,41 @@ test('desktop dark/light and mobile layouts', async ({ page }) => {
   await expect(page.locator('.chart-card').first()).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: 'artifacts/ink-detail-mobile.png', fullPage: true })
+  await page.setViewportSize({ width: 1440, height: 1100 })
+  await page.screenshot({ path: 'artifacts/ink-detail.png', fullPage: true, animations: 'disabled' })
+  expect(ctx.pageErrors).toEqual([])
+})
+test('layout, region, search and favorite controls reuse the same cached list', async ({ page }) => {
+  const ctx = await mock(page, { nodes: 6, loggedIn: true })
+  await page.goto('/'); await expect(page.locator('.server-card')).toHaveCount(6)
+  await page.getByRole('button', { name: '收藏节点', exact: true }).first().click()
+  await expect(page.locator('.server-card')).toHaveCount(6)
+  await page.getByRole('button', { name: '列表视图', exact: true }).click()
+  await expect(page.locator('.node-table tbody tr')).toHaveCount(6)
+  await page.getByRole('button', { name: 'JP', exact: true }).click()
+  await expect(page.locator('.node-table tbody tr')).toHaveCount(1)
+  await page.getByRole('button', { name: '全部节点', exact: true }).click()
+  await page.getByRole('button', { name: '卡片视图', exact: true }).click()
+  await page.getByRole('button', { name: '搜索节点、地区或分组…', exact: true }).click()
+  await page.getByRole('textbox').fill('London')
+  await expect(page.locator('.server-card')).toHaveCount(1)
+  await page.getByRole('button', { name: '主题选项', exact: true }).click()
+  await page.getByRole('button', { name: '保存至站点' }).click()
+  await expect(page.getByRole('status')).toContainText('已保存')
+  expect(ctx.calls.find(call => call.path === '/api/theme_options').body.theme_options.favorites).toEqual(['0:one'])
+  expect(count(ctx, '/api/config')).toBe(1); expect(count(ctx, '/api/servers')).toBe(1)
+  expect(count(ctx, '/api/history/all')).toBe(0); expect(ctx.pageErrors).toEqual([])
+})
+test('history legends and probe controls share one range request', async ({ page }) => {
+  const ctx = await mock(page)
+  await page.goto('/#/server/one'); await expect(page.locator('.chart-card').first()).toBeVisible()
+  await page.locator('.chart-card').first().getByRole('button', { name: 'CPU', exact: true }).click()
+  await page.locator('.probes-section .range-tabs').getByRole('button', { name: '丢包', exact: true }).click()
+  await page.locator('.probe-selectors button').first().click()
+  expect(count(ctx, '/api/history/all')).toBe(1)
+  await expect(page.locator('.coverage-panel')).toContainText('10 min')
+  await page.locator('.range-tabs').first().getByRole('button', { name: '6 h', exact: true }).click()
+  await expect.poll(() => count(ctx, '/api/history/all')).toBe(2)
+  expect(ctx.calls.filter(call => call.path === '/api/history/all').at(-1).query).toBe('?id=one&hours=6')
   expect(ctx.pageErrors).toEqual([])
 })

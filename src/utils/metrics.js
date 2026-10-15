@@ -3,7 +3,8 @@ export const probes = ['ct', 'cu', 'cm', 'bd', 'node_1', 'node_2', 'node_3', 'no
 export const present = value => value !== false && value !== undefined
 export function timestamp(value) {
   if (value == null) return 0
-  if (typeof value === 'number') return value < 1e12 ? value * 1000 : value
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : NaN
+  if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric
   return Date.parse(value) || 0
 }
 export const online = (server, now = Date.now()) => now - timestamp(server.last_updated) < 300000
@@ -40,6 +41,6 @@ export function bytes(value) {
   return `${(size / 1024 ** index).toFixed(index ? 1 : 0)} ${['B', 'KiB', 'MiB', 'GiB', 'TiB'][index]}`
 }
 export const percent = (used, total) => Number(total) > 0 ? Number(used) / Number(total) * 100 : 0
-export const probeText = (value, unit, timeout = 'Timeout') => value === null ? timeout : present(value) ? `${value}${unit}` : '—'
+export const probeText = (value, unit, timeout = 'Timeout') => value === null ? timeout : present(value) ? `${typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(1)) : value}${unit}` : '—'
 export const probeLabel = (config, key) => config[key.startsWith('node_') ? `${key}_name` : `custom_${key}_name`] || ({ ct: 'CT', cu: 'CU', cm: 'CM', bd: 'BGP' }[key] ?? `Node ${key.slice(-1)}`)
 export const priceText = value => value === '0' || value === '-1' ? 'Free' : String(value ?? '').trim()
