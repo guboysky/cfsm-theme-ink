@@ -86,7 +86,7 @@ Settings → Secrets and variables → Actions 添加以下 Secrets：
 - 公开 + Turnstile 开：真实挑战、响应凭证、刷新复用。
 - 私有 + Turnstile 关：已连接真实后端确认 is_public=false，匿名访问本地构建主题会跳转 /admin#/admin，未发现页面错误。登录后的 Cookie／跨域 JWT 与真实 WS 尚待验证。跳转后内置后台会自行初始化配置，其请求不属于第三方主题。
 - 私有 + Turnstile 开：JWT + 真实挑战，列表／WS／历史和过期重验。
-- GitHub Actions 远程运行、dist 分支追加历史和 GitHub Pages 实际托管。
+- GitHub Actions 已通过构建及自动化检查，dist 预览分支已按追加方式更新；GitHub Pages 实际托管仍待验收。
 
 测试截图位于 `artifacts/`。进一步验收需要由用户切换后台公开访问和 Turnstile 选项，并自行完成后台登录；不需要提供账户密码或密钥。
 
