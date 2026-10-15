@@ -217,3 +217,16 @@ body { -webkit-font-smoothing: antialiased; }
   .card-subtitle { font-size: 12px; }
   .card-subtitle .ip-facts { font-size: 12px; }
 }
+
+/* Give the overview captions room without increasing the tile height. */
+.stat-note { font-size: 11px; line-height: 13px; letter-spacing: .025em; word-spacing: .16em; }
+.transfer-note { display: flex; align-items: center; gap: 10px; word-spacing: .08em; }
+.table-billing { color: var(--muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.node-table th:nth-child(3) { width: 20%; }
+.node-table th:nth-child(4) { width: 20%; }
+.node-table th:nth-child(5) { width: 13%; }
+@media (max-width: 560px) {
+  .stat-note { font-size: 9px; letter-spacing: .01em; word-spacing: .05em; }
+  .transfer-note { gap: 5px; flex-wrap: wrap; font-size: 8px; line-height: 10px; }
+  .filter-tabs { max-width: none; }
+}

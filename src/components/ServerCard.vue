@@ -9,7 +9,7 @@ import { online, percent, bytes, present, probes, probeLabel, probeText } from '
 import { osIcon, validRegion, uptimeText, daysLeft, expiryDate, traffic, billing, loadValues, windowValues, probeTone } from '../utils/display.js'
 import { favorite, toggleFavorite } from '../composables/usePreferences.js'
 import { t, language } from '../composables/useTheme.js'
-const props = defineProps({ server: Object, site: Object, siteIndex: Number, now: Number, compact: Boolean })
+const props = defineProps({ server: Object, site: Object, siteIndex: Number, now: Number })
 const router = useRouter()
 const isOnline = computed(() => online(props.server, props.now))
 const transfer = computed(() => traffic(props.server))
@@ -26,7 +26,7 @@ const loads = computed(() => loadValues(props.server.load_avg).map(value => valu
 const open = () => router.push({ path: `/server/${props.server.id}`, query: { site: props.siteIndex } })
 </script>
 <template>
-  <article class="server-card" :class="{ compact, 'is-offline': !isOnline }" role="link" tabindex="0" @click="open" @keydown.enter.self="open">
+  <article class="server-card" :class="{ 'is-offline': !isOnline }" role="link" tabindex="0" @click="open" @keydown.enter.self="open">
     <div class="card-heading">
       <span class="state-dot" :class="{ offline: !isOnline }" :title="t(isOnline ? 'online' : 'offline')"></span>
       <img v-if="osIcon(server.os)" class="os-icon" :src="`${site.base}/os-icons/${osIcon(server.os)}`" :alt="server.os">

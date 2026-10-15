@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 const server = { id: 'one', note: 'CN2 GIA, 备用节点', ip_v4: '1', ip_v6: '1', name: 'Tokyo Edge', region: 'JP', server_group: 'Production', cpu: 12, cpu_cores: 4, cpu_info: 'AMD EPYC 7B13', kernel_version: '6.12.41-amd64', boot_time: Date.now() - 93 * 86400000, load_avg: '0.07, 0.03, 0.00', ram_total: 4096, ram_used: 1024, disk_total: 80000, disk_used: 12000, swap_total: 2048, swap_used: 0, net_in_speed: 1024, net_out_speed: 512, net_rx: 274 * 1024 ** 3, net_tx: 393 * 1024 ** 3, net_rx_monthly: 27 * 1024 ** 3, net_tx_monthly: 3 * 1024 ** 3, traffic_limit: 1024, processes: 94, tcp_conn: 28, udp_conn: 2, price: '33.15', currency: '$', billing_cycle: 'month', expire_date: new Date(Date.now() + 19 * 86400000).toISOString(), arch: 'amd64', os: 'Debian', last_updated: Date.now(), ping_ct: 0, loss_ct: 0, ping_cu: null, loss_cu: null, ping_cm: false, loss_cm: false, ping: [{ ts: Date.now(), ct: 0, cu: null, cm: false }], loss: [{ ts: Date.now(), ct: 0, cu: null, cm: false }] }
-async function mock(page, { isPublic = true, turnstile = false, loggedIn = false, timeout = 0, rejectOnce = false, nodes = 1, multiSite = false, note = server.note, clusteredHistory = false } = {}) {
+async function mock(page, { isPublic = true, turnstile = false, loggedIn = false, timeout = 0, rejectOnce = false, nodes = 1, multiSite = false, note = server.note, clusteredHistory = false, themeOptions = {}, sysConfig = {} } = {}) {
   const calls = [], sockets = [], apiErrors = [], pageErrors = []
   page.on('pageerror', error => pageErrors.push(error.message))
   await page.addInitScript(({ loggedIn }) => {
@@ -19,11 +19,11 @@ async function mock(page, { isPublic = true, turnstile = false, loggedIn = false
   await page.route('**/api/**', async route => {
     const request = route.request(), url = new URL(request.url()), headers = request.headers()
     calls.push({ path: url.pathname, query: url.search, headers, method: request.method(), body: request.postDataJSON() })
-    if (url.pathname === '/api/config') return route.fulfill({ json: { site_title: 'Ink Infrastructure', version: 'test', preferred_theme: 'dark', default_language: 'zh', is_public: isPublic, authorization: loggedIn, turnstile_enabled: turnstile, turnstile_site_key: 'test-key', frontend_ws_timeout_minutes: timeout, theme_options: {}, custom_ct_name: '电信', custom_cu_name: '联通' } })
+    if (url.pathname === '/api/config') return route.fulfill({ json: { site_title: 'Ink Infrastructure', version: 'test', preferred_theme: 'dark', default_language: 'zh', is_public: isPublic, authorization: loggedIn, turnstile_enabled: turnstile, turnstile_site_key: 'test-key', frontend_ws_timeout_minutes: timeout, theme_options: themeOptions, custom_ct_name: '电信', custom_cu_name: '联通' } })
     if (!isPublic && !headers.authorization) return route.fulfill({ status: 401, json: { error: 'Unauthorized' } })
     if (turnstile && ((!headers['x-turnstile-token'] && !headers['x-turnstile-verified']) || (rejectOnce && !rejected))) { rejected = true; return route.fulfill({ status: 403, json: { error: 'Turnstile' } }) }
     const verified = turnstile ? { turnstile_verified: 'cached-verified' } : {}
-    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, note, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: index === 4 ? 82 : 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true, show_price: true, show_expire: true, show_tf: true }, ...verified } })
+    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, note, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: index === 4 ? 82 : 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true, show_price: true, show_expire: true, show_tf: true, ...sysConfig }, ...verified } })
     if (url.pathname === '/api/server') return route.fulfill({ json: { ...server, ...verified } })
     if (url.pathname === '/api/history/all') return route.fulfill({ json: Array.from({ length: 24 }, (_, index) => ({ ...server, cpu: 12 + Math.sin(index / 3) * 8, net_in_speed: 65536 + Math.sin(index) * 15000, net_out_speed: 4096 + index * 30, tcp_conn: 28 + Math.floor(Math.sin(index) * 5), processes: 94 + Math.floor(Math.cos(index) * 4), timestamp: Date.now() - (clusteredHistory ? index < 4 ? (10 - index * 2) * 60000 : (23 - index) * 2500 : (23 - index) * 20000) })) })
     if (url.pathname === '/api/theme_options') return route.fulfill({ json: { success: true, ...verified } })
@@ -110,15 +110,15 @@ test('connection timeout waits for explicit continuation', async ({ page }) => {
   await page.getByRole('button', { name: '继续实时监控' }).click()
   await expect.poll(() => ctx.sockets.length).toBe(2)
 })
-test('theme options persist via approved endpoint', async ({ page }) => {
-  const ctx = await mock(page, { loggedIn: true })
+test('removed controls stay absent and legacy compact settings fall back to cards', async ({ page }) => {
+  const ctx = await mock(page, { themeOptions: { view_mode: 'compact', density: 'compact' } })
   await page.goto('/'); await expect(page.locator('.server-card')).toBeVisible()
-  await page.getByRole('button', { name: '主题选项' }).click()
-  await page.getByLabel('紧凑卡片').check()
-  await page.getByRole('button', { name: '保存至站点' }).click()
-  await expect(page.getByRole('status')).toContainText('已保存')
-  const save = ctx.calls.find(call => call.path === '/api/theme_options')
-  expect(save.method).toBe('POST'); expect(save.body).toEqual({ theme_options: { density: 'compact', show_network: true } })
+  await expect(page.getByRole('button', { name: '主题选项', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '紧凑视图', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '搜索节点、地区或分组…', exact: true })).toHaveCount(0)
+  await expect(page.locator('.server-card.compact, .compact-grid')).toHaveCount(0)
+  await expect(page.locator('.view-actions button')).toHaveCount(2)
+  expect(count(ctx, '/api/theme_options')).toBe(0)
 })
 test('403 clears stale verification and retries only after challenge, without reload', async ({ page }) => {
   const ctx = await mock(page, { turnstile: true, rejectOnce: true })
@@ -201,7 +201,7 @@ test('desktop dark/light and mobile layouts', async ({ page }) => {
   await page.screenshot({ path: 'artifacts/ink-detail.png', fullPage: true, animations: 'disabled' })
   expect(ctx.pageErrors).toEqual([])
 })
-test('layout, region, search and favorite controls reuse the same cached list', async ({ page }) => {
+test('layout, region and favorite controls reuse the same cached list', async ({ page }) => {
   const ctx = await mock(page, { nodes: 6, loggedIn: true })
   await page.goto('/'); await expect(page.locator('.server-card')).toHaveCount(6)
   await page.getByRole('button', { name: '收藏节点', exact: true }).first().click()
@@ -211,14 +211,13 @@ test('layout, region, search and favorite controls reuse the same cached list', 
   await page.getByRole('button', { name: 'JP', exact: true }).click()
   await expect(page.locator('.node-table tbody tr')).toHaveCount(1)
   await page.getByRole('button', { name: '全部节点', exact: true }).click()
+  await page.locator('.quick-filters button[title="收藏"]').click()
+  await expect(page.locator('.node-table tbody tr')).toHaveCount(1)
   await page.getByRole('button', { name: '卡片视图', exact: true }).click()
-  await page.getByRole('button', { name: '搜索节点、地区或分组…', exact: true }).click()
-  await page.getByRole('textbox').fill('London')
   await expect(page.locator('.server-card')).toHaveCount(1)
-  await page.getByRole('button', { name: '主题选项', exact: true }).click()
-  await page.getByRole('button', { name: '保存至站点' }).click()
-  await expect(page.getByRole('status')).toContainText('已保存')
-  expect(ctx.calls.find(call => call.path === '/api/theme_options').body.theme_options.favorites).toEqual(['0:one'])
+  await page.locator('.quick-filters button[title="收藏"]').click()
+  await expect(page.locator('.server-card')).toHaveCount(6)
+  expect(count(ctx, '/api/theme_options')).toBe(0)
   expect(count(ctx, '/api/config')).toBe(1); expect(count(ctx, '/api/servers')).toBe(1)
   expect(count(ctx, '/api/history/all')).toBe(0); expect(ctx.pageErrors).toEqual([])
 })
@@ -250,8 +249,9 @@ test('node notes and pricing use the intended fields without HTML injection', as
   await expect(page.locator('.notes-only b')).toHaveCount(0)
   await expect(page.locator('.notes-only')).not.toContainText('Production')
   await page.getByRole('button', { name: '列表视图', exact: true }).click()
-  await expect(page.locator('.region-chip')).toContainText('日本')
-  await expect(page.locator('.node-table .note-chip').first()).toContainText('CN2 GIA')
+  await expect(page.getByRole('columnheader', { name: '剩余日期', exact: true })).toBeVisible()
+  await expect(page.locator('.table-billing')).toHaveText('剩余 19 天 / $33.15 / 月')
+  await expect(page.locator('.table-node p, .node-table .info-chip')).toHaveCount(0)
   expect(count(ctx, '/api/servers')).toBe(1); expect(ctx.pageErrors).toEqual([])
 })
 
@@ -281,12 +281,12 @@ test('irregular live samples cannot crowd the chart time labels', async ({ page 
   expect(count(ctx, '/api/history/all')).toBe(1); expect(ctx.pageErrors).toEqual([])
 })
 
-test('background guidance and theme controls remain available without an admin icon', async ({ page }) => {
-  const ctx = await mock(page)
+test('list billing respects disabled price and expiry fields', async ({ page }) => {
+  const ctx = await mock(page, { sysConfig: { show_price: false, show_expire: false } })
   await page.goto('/'); await expect(page.locator('.server-card')).toBeVisible()
   await expect(page.locator('nav a[href*="/admin"]')).toHaveCount(0)
-  await page.getByRole('button', { name: '主题选项', exact: true }).click()
-  await expect(page.getByRole('dialog')).toContainText('背景图片可在后台')
-  await expect(page.getByLabel('紧凑卡片')).toBeVisible()
+  await page.getByRole('button', { name: '列表视图', exact: true }).click()
+  await expect(page.locator('.table-billing')).toHaveText('—')
+  await expect(page.locator('.node-table')).not.toContainText('$33.15')
   expect(count(ctx, '/api/config')).toBe(1); expect(count(ctx, '/api/servers')).toBe(1)
 })
