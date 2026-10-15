@@ -6,7 +6,7 @@ import MetricBar from './MetricBar.vue'
 import ProbeBuckets from './ProbeBuckets.vue'
 import NodeInformation from './NodeInformation.vue'
 import { online, percent, bytes, present, probes, probeLabel, probeText } from '../utils/metrics.js'
-import { osIcon, validRegion, uptimeText, daysLeft, expiryDate, traffic, billing, loadValues, windowValues, probeTone } from '../utils/display.js'
+import { osIcon, validRegion, uptimeText, daysLeft, expiryDate, traffic, billing, loadValues, probeWindow, probeTone } from '../utils/display.js'
 import { favorite, toggleFavorite } from '../composables/usePreferences.js'
 import { t, language } from '../composables/useTheme.js'
 const props = defineProps({ server: Object, site: Object, siteIndex: Number, now: Number })
@@ -16,12 +16,9 @@ const transfer = computed(() => traffic(props.server))
 const price = computed(() => props.site.sysConfig.show_price === true ? billing(props.server, language.value) : '')
 const uptime = computed(() => uptimeText(props.server.boot_time, props.now, language.value))
 const expiry = computed(() => daysLeft(props.server.expire_date, props.now))
-const rows = computed(() => probes.filter(key => present(props.server[`ping_${key}`]) || present(props.server[`loss_${key}`])))
-const three = computed(() => rows.value.filter(key => ['ct', 'cu', 'cm'].includes(key)))
 const windows = computed(() => props.site.sysConfig.show_three_net_details === true && (props.server.ping?.length || props.server.loss?.length))
-const ping = computed(() => windowValues(props.server, 'ping'))
-const loss = computed(() => windowValues(props.server, 'loss'))
-const latest = values => [...values].reverse().find(present)
+const rows = computed(() => probes.filter(key => present(props.server[`ping_${key}`]) || present(props.server[`loss_${key}`]) || windows.value && ['ct', 'cu', 'cm'].includes(key) && ['ping', 'loss'].some(field => probeWindow(props.server, field, key).some(present))))
+const three = computed(() => rows.value.filter(key => ['ct', 'cu', 'cm'].includes(key)))
 const loads = computed(() => loadValues(props.server.load_avg).map(value => value.toFixed(2)).join(', '))
 const open = () => router.push({ path: `/server/${props.server.id}`, query: { site: props.siteIndex } })
 </script>
@@ -50,8 +47,12 @@ const open = () => router.push({ path: `/server/${props.server.id}`, query: { si
       <div class="price-fact"><Icon name="wallet" :size="13"/><span>{{ price || '—' }}</span></div>
     </div>
     <div v-if="rows.length" class="probe-list">
-      <div v-if="three.length" class="three-net-line"><span>{{ t('threeNet') }}</span><div><span v-for="key in three" :key="key" class="probe-row" :class="probeTone(server[`ping_${key}`])" :title="probeLabel(site.config, key)"><template v-if="present(server[`ping_${key}`])">{{ probeText(server[`ping_${key}`], ' ms', t('timeout')) }}</template><small v-if="present(server[`loss_${key}`]) && (server[`loss_${key}`] === null || !windows || !present(server[`ping_${key}`]))" class="probe-loss" :class="probeTone(server[`loss_${key}`], true)"> · {{ probeText(server[`loss_${key}`], '%', t('timeout')) }}</small></span></div></div>
-      <div v-if="windows" class="probe-panels"><div v-for="field in ['ping', 'loss']" :key="field" class="probe-panel"><div><span>{{ t(field === 'ping' ? 'latency' : 'loss') }}</span><strong :class="probeTone(latest(field === 'ping' ? ping : loss), field === 'loss')">{{ probeText(latest(field === 'ping' ? ping : loss), field === 'ping' ? ' ms' : '%', t('timeout')) }}</strong></div><ProbeBuckets :values="field === 'ping' ? ping : loss" :loss="field === 'loss'"/></div></div>
+      <div v-if="three.length" class="carrier-probes">
+        <div v-for="key in three" :key="key" class="carrier-probe" :data-probe="key">
+          <div class="carrier-signal"><div class="carrier-heading"><span class="carrier-name" :title="probeLabel(site.config, key)">{{ probeLabel(site.config, key) }}</span><strong v-if="present(server[`ping_${key}`])" class="carrier-latency" :class="probeTone(server[`ping_${key}`])" :title="t('latency')">{{ probeText(server[`ping_${key}`], ' ms', t('timeout')) }}</strong></div><ProbeBuckets v-if="windows" :values="probeWindow(server, 'ping', key)"/></div>
+          <div class="carrier-signal"><div class="carrier-heading carrier-loss-heading"><strong v-if="present(server[`loss_${key}`])" class="carrier-loss" :class="probeTone(server[`loss_${key}`], true)" :title="t('loss')">{{ probeText(server[`loss_${key}`], '%', t('timeout')) }}</strong></div><ProbeBuckets v-if="windows" :values="probeWindow(server, 'loss', key)" loss/></div>
+        </div>
+      </div>
       <div v-for="key in rows.filter(key => !three.includes(key))" :key="key" class="extra-probe"><span>{{ probeLabel(site.config, key) }}</span><strong v-if="present(server[`ping_${key}`])">{{ probeText(server[`ping_${key}`], ' ms', t('timeout')) }}</strong><small v-if="present(server[`loss_${key}`])">{{ probeText(server[`loss_${key}`], '%', t('timeout')) }}</small></div>
     </div>
     <NodeInformation :server="server" :site="site" notes-only/>

@@ -230,3 +230,20 @@ body { -webkit-font-smoothing: antialiased; }
   .transfer-note { gap: 5px; flex-wrap: wrap; font-size: 8px; line-height: 10px; }
   .filter-tabs { max-width: none; }
 }
+
+/* Three carriers share the previous summary area; no enclosing capsules. */
+.carrier-probes { height: 83px; display: grid; grid-template-rows: repeat(3, minmax(0, 1fr)); row-gap: 4px; }
+.carrier-probe { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; min-width: 0; }
+.carrier-signal { min-width: 0; }
+.carrier-heading { display: flex; justify-content: space-between; align-items: center; gap: 5px; height: 15px; margin-bottom: 3px; font-size: 11px; line-height: 15px; }
+.carrier-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.carrier-heading strong { font-size: 11px; font-weight: 550; white-space: nowrap; }
+.carrier-loss-heading { justify-content: flex-end; }
+.carrier-latency.good { color: var(--green); }
+.carrier-loss.good { color: var(--primary); }
+.carrier-probes .buckets { height: 7px; gap: 2px; }
+.carrier-probes .buckets i { border-radius: 1px; }
+@media (max-width: 560px) {
+  .carrier-heading, .carrier-heading strong { font-size: 12px; }
+  .carrier-probe { column-gap: 18px; }
+}

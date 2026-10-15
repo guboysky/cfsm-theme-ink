@@ -54,10 +54,4 @@ export function billing(server, language) {
   return `${currency}${price}${cycle ? ` / ${cycle}` : ''}`
 }
 export const probeTone = (value, loss = false) => value === null ? 'bad' : value === false || value === undefined ? 'absent' : Number(value) >= (loss ? 5 : 220) ? 'bad' : Number(value) >= (loss ? 1 : 170) ? 'warn' : 'good'
-export function windowValues(server, field) {
-  return (Array.isArray(server[field]) ? server[field] : []).map(point => {
-    const values = ['ct', 'cu', 'cm'].map(key => point[key]).filter(value => value !== false && value !== undefined)
-    const numbers = values.filter(value => value !== null && Number.isFinite(Number(value))).map(Number)
-    return numbers.length ? numbers.reduce((a, b) => a + b, 0) / numbers.length : values.includes(null) ? null : false
-  })
-}
+export const probeWindow = (server, field, key) => (Array.isArray(server[field]) ? server[field] : []).map(point => point[key])

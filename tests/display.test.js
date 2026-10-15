@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { traffic, windowValues, loadValues, billing, probeTone, uptimeDays, uptimeText, expiryDate } from '../src/utils/display.js'
+import { traffic, probeWindow, loadValues, billing, probeTone, uptimeDays, uptimeText, expiryDate } from '../src/utils/display.js'
 import { probeText, timestamp, probeLabel } from '../src/utils/metrics.js'
 import { timeTicks } from '../src/utils/chart.js'
 test('traffic quota is in GiB, monthly counters and calculation mode are respected', () => {
@@ -12,7 +12,10 @@ test('traffic quota is in GiB, monthly counters and calculation mode are respect
   assert.equal(traffic({ traffic_limit: 0 }).limit, 0)
 })
 test('probe windows keep absent and timeout buckets, including zero measurements', () => {
-  assert.deepEqual(windowValues({ ping: [{ ct: false }, { ct: null }, { ct: 0, cu: 10 }, { cm: 0 }] }, 'ping'), [false, null, 5, 0])
+  const server = { ping: [{ ct: false }, { ct: null }, { ct: 0, cu: 10 }, { cm: 0 }] }
+  assert.deepEqual(probeWindow(server, 'ping', 'ct'), [false, null, 0, undefined])
+  assert.deepEqual(probeWindow(server, 'ping', 'cu'), [undefined, undefined, 10, undefined])
+  assert.deepEqual(probeWindow(server, 'ping', 'cm'), [undefined, undefined, undefined, 0])
   assert.equal(probeTone(false), 'absent'); assert.equal(probeTone(null), 'bad')
   assert.equal(probeTone(0, true), 'good')
 })

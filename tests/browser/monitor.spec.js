@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 const server = { id: 'one', note: 'CN2 GIA, 备用节点', ip_v4: '1', ip_v6: '1', name: 'Tokyo Edge', region: 'JP', server_group: 'Production', cpu: 12, cpu_cores: 4, cpu_info: 'AMD EPYC 7B13', kernel_version: '6.12.41-amd64', boot_time: Date.now() - 93 * 86400000, load_avg: '0.07, 0.03, 0.00', ram_total: 4096, ram_used: 1024, disk_total: 80000, disk_used: 12000, swap_total: 2048, swap_used: 0, net_in_speed: 1024, net_out_speed: 512, net_rx: 274 * 1024 ** 3, net_tx: 393 * 1024 ** 3, net_rx_monthly: 27 * 1024 ** 3, net_tx_monthly: 3 * 1024 ** 3, traffic_limit: 1024, processes: 94, tcp_conn: 28, udp_conn: 2, price: '33.15', currency: '$', billing_cycle: 'month', expire_date: new Date(Date.now() + 19 * 86400000).toISOString(), arch: 'amd64', os: 'Debian', last_updated: Date.now(), ping_ct: 0, loss_ct: 0, ping_cu: null, loss_cu: null, ping_cm: false, loss_cm: false, ping: [{ ts: Date.now(), ct: 0, cu: null, cm: false }], loss: [{ ts: Date.now(), ct: 0, cu: null, cm: false }] }
-async function mock(page, { isPublic = true, turnstile = false, loggedIn = false, timeout = 0, rejectOnce = false, nodes = 1, multiSite = false, note = server.note, clusteredHistory = false, themeOptions = {}, sysConfig = {} } = {}) {
+async function mock(page, { isPublic = true, turnstile = false, loggedIn = false, timeout = 0, rejectOnce = false, nodes = 1, multiSite = false, note = server.note, clusteredHistory = false, themeOptions = {}, sysConfig = {}, serverData = {} } = {}) {
   const calls = [], sockets = [], apiErrors = [], pageErrors = []
   page.on('pageerror', error => pageErrors.push(error.message))
   await page.addInitScript(({ loggedIn }) => {
@@ -23,8 +23,8 @@ async function mock(page, { isPublic = true, turnstile = false, loggedIn = false
     if (!isPublic && !headers.authorization) return route.fulfill({ status: 401, json: { error: 'Unauthorized' } })
     if (turnstile && ((!headers['x-turnstile-token'] && !headers['x-turnstile-verified']) || (rejectOnce && !rejected))) { rejected = true; return route.fulfill({ status: 403, json: { error: 'Turnstile' } }) }
     const verified = turnstile ? { turnstile_verified: 'cached-verified' } : {}
-    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, note, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: index === 4 ? 82 : 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true, show_price: true, show_expire: true, show_tf: true, ...sysConfig }, ...verified } })
-    if (url.pathname === '/api/server') return route.fulfill({ json: { ...server, ...verified } })
+    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, ...serverData, note, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: index === 4 ? 82 : 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true, show_price: true, show_expire: true, show_tf: true, ...sysConfig }, ...verified } })
+    if (url.pathname === '/api/server') return route.fulfill({ json: { ...server, ...serverData, ...verified } })
     if (url.pathname === '/api/history/all') return route.fulfill({ json: Array.from({ length: 24 }, (_, index) => ({ ...server, cpu: 12 + Math.sin(index / 3) * 8, net_in_speed: 65536 + Math.sin(index) * 15000, net_out_speed: 4096 + index * 30, tcp_conn: 28 + Math.floor(Math.sin(index) * 5), processes: 94 + Math.floor(Math.cos(index) * 4), timestamp: Date.now() - (clusteredHistory ? index < 4 ? (10 - index * 2) * 60000 : (23 - index) * 2500 : (23 - index) * 20000) })) })
     if (url.pathname === '/api/theme_options') return route.fulfill({ json: { success: true, ...verified } })
     apiErrors.push(url.pathname); return route.fulfill({ status: 404 })
@@ -52,7 +52,7 @@ for (const isPublic of [true, false]) for (const turnstile of [false, true]) {
     expect(ctx.sockets[0].url.searchParams.has('token')).toBe(false)
     await expect(page.locator('.server-card')).toContainText('0 ms')
     await expect(page.locator('.server-card')).toContainText('超时')
-    await expect(page.locator('.probe-row')).toHaveCount(2)
+    await expect(page.locator('.carrier-probe')).toHaveCount(2)
     await page.locator('.server-card').click()
     await expect(page.locator('.chart-card').first()).toBeVisible()
     await expect.poll(() => ctx.sockets.length).toBe(2)
@@ -89,7 +89,7 @@ test('throttled incremental WS, visibility, and no REST polling', async ({ page 
   for (let cpu = 30; cpu <= 40; cpu++) ctx.sockets[0].ws.send(JSON.stringify({ type: 'batchUpdate', updates: [{ serverId: 'one', samples: [{ data: { cpu }, ts: Date.now() }] }] }))
   await expect(page.locator('.metric-heading strong').first()).toContainText('12.0')
   await expect(page.locator('.metric-heading strong').first()).toContainText('40.0')
-  await expect(page.locator('.probe-row')).toHaveCount(2)
+  await expect(page.locator('.carrier-probe')).toHaveCount(2)
   expect(count(ctx, '/api/servers')).toBe(1)
   await page.evaluate(() => document.dispatchEvent(new Event('test-hidden')))
   await expect.poll(() => ctx.sockets[0].closed).toBe(true)
@@ -169,7 +169,7 @@ test('multiple sites keep subscription ids separate and use cross-origin JWT', a
   expect(count(ctx, '/api/servers')).toBe(2)
 })
 test('desktop dark/light and mobile layouts', async ({ page }) => {
-  const ctx = await mock(page, { nodes: 6 })
+  const ctx = await mock(page, { nodes: 6, serverData: { ping_ct: 23, loss_ct: 0.8, ping_cu: 9, loss_cu: 0.4, ping_cm: 42, loss_cm: 0.8, ping: Array.from({ length: 24 }, (_, i) => ({ ct: 23 + i % 4, cu: 9 + i % 3, cm: 42 + i % 5 })), loss: Array.from({ length: 24 }, (_, i) => ({ ct: i === 12 ? 2 : 0, cu: i === 18 ? 2 : 0, cm: i === 6 ? 2 : 0 })) } })
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto('/')
   await expect(page.locator('.server-card')).toHaveCount(6)
@@ -289,4 +289,47 @@ test('list billing respects disabled price and expiry fields', async ({ page }) 
   await expect(page.locator('.table-billing')).toHaveText('—')
   await expect(page.locator('.node-table')).not.toContainText('$33.15')
   expect(count(ctx, '/api/config')).toBe(1); expect(count(ctx, '/api/servers')).toBe(1)
+})
+
+test('each carrier displays its own current values and windows without averaging or extra history', async ({ page }) => {
+  const ctx = await mock(page, { serverData: {
+    ping_ct: 23, loss_ct: 0.8, ping_cu: 9, loss_cu: 0.4, ping_cm: 42, loss_cm: 0.8,
+    ping: [{ ct: 23, cu: 9, cm: 42 }, { ct: 0, cu: null, cm: false }],
+    loss: [{ ct: 0, cu: 2, cm: 8 }, { ct: 0.8, cu: false, cm: null }]
+  } })
+  await page.goto('/'); await expect(page.locator('.carrier-probe')).toHaveCount(3)
+  const ct = page.locator('[data-probe="ct"]'), cu = page.locator('[data-probe="cu"]'), cm = page.locator('[data-probe="cm"]')
+  await expect(ct.locator('.carrier-name')).toHaveText('电信')
+  await expect(ct.locator('.carrier-latency')).toHaveText('23 ms')
+  await expect(cu.locator('.carrier-latency')).toHaveText('9 ms')
+  await expect(cm.locator('.carrier-latency')).toHaveText('42 ms')
+  await expect(ct.locator('.carrier-loss')).toHaveText('0.8%')
+  await expect(cu.locator('.carrier-loss')).toHaveText('0.4%')
+  await expect(ct.locator('.buckets').first().locator('i').nth(1)).toHaveClass('good')
+  await expect(cu.locator('.buckets').first().locator('i').nth(1)).toHaveClass('bad')
+  await expect(cm.locator('.buckets').first().locator('i').nth(1)).toHaveClass('absent')
+  await expect(cu.locator('.buckets').last().locator('i').first()).toHaveClass('warn')
+  await expect(cm.locator('.buckets').last().locator('i').first()).toHaveClass('bad')
+  await expect(page.locator('.probe-panels, .three-net-line')).toHaveCount(0)
+  await expect.poll(() => ctx.sockets.length).toBe(1)
+  const height = await page.locator('.server-card').evaluate(card => card.getBoundingClientRect().height)
+  ctx.sockets[0].ws.send(JSON.stringify({ type: 'batchUpdate', updates: [{ serverId: 'one', samples: [{ data: { ping_ct: 0, loss_ct: 0, ping_cu: false }, ts: Date.now() }] }] }))
+  await expect(ct.locator('.carrier-latency')).toHaveText('0 ms')
+  await expect(ct.locator('.carrier-loss')).toHaveText('0%')
+  await expect(cu.locator('.carrier-latency')).toHaveCount(0)
+  expect(await page.locator('.server-card').evaluate(card => card.getBoundingClientRect().height)).toBe(height)
+  expect(count(ctx, '/api/history/all')).toBe(0); expect(count(ctx, '/api/servers')).toBe(1)
+  expect(ctx.pageErrors).toEqual([])
+})
+
+test('disabled window details keep current per-carrier values without bars or requests', async ({ page }) => {
+  const ctx = await mock(page, { sysConfig: { show_three_net_details: false } })
+  await page.goto('/'); await expect(page.locator('.carrier-probe')).toHaveCount(2)
+  await expect(page.locator('[data-probe="ct"] .carrier-latency')).toHaveText('0 ms')
+  await expect(page.locator('[data-probe="ct"] .carrier-loss')).toHaveText('0%')
+  await expect(page.locator('[data-probe="cu"] .carrier-latency')).toHaveText('超时')
+  await expect(page.locator('[data-probe="cm"]')).toHaveCount(0)
+  await expect(page.locator('.carrier-probes .buckets')).toHaveCount(0)
+  expect(count(ctx, '/api/history/all')).toBe(0); expect(count(ctx, '/api/servers')).toBe(1)
+  expect(ctx.pageErrors).toEqual([])
 })
