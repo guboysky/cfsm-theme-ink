@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
-const server = { id: 'one', name: 'Tokyo Edge', region: 'JP', server_group: 'Production', cpu: 12, cpu_cores: 4, cpu_info: 'AMD EPYC 7B13', kernel_version: '6.12.41-amd64', boot_time: Date.now() - 93 * 86400000, load_avg: '0.07, 0.03, 0.00', ram_total: 4096, ram_used: 1024, disk_total: 80000, disk_used: 12000, swap_total: 2048, swap_used: 0, net_in_speed: 1024, net_out_speed: 512, net_rx: 274 * 1024 ** 3, net_tx: 393 * 1024 ** 3, net_rx_monthly: 27 * 1024 ** 3, net_tx_monthly: 3 * 1024 ** 3, traffic_limit: 1024, processes: 94, tcp_conn: 28, udp_conn: 2, price: '33.15', currency: '$', billing_cycle: 'month', expire_date: new Date(Date.now() + 19 * 86400000).toISOString(), arch: 'amd64', os: 'Debian', last_updated: Date.now(), ping_ct: 0, loss_ct: 0, ping_cu: null, loss_cu: null, ping_cm: false, loss_cm: false, ping: [{ ts: Date.now(), ct: 0, cu: null, cm: false }], loss: [{ ts: Date.now(), ct: 0, cu: null, cm: false }] }
-async function mock(page, { isPublic = true, turnstile = false, loggedIn = false, timeout = 0, rejectOnce = false, nodes = 1, multiSite = false } = {}) {
+const server = { id: 'one', note: 'CN2 GIA, 备用节点', ip_v4: '1', ip_v6: '1', name: 'Tokyo Edge', region: 'JP', server_group: 'Production', cpu: 12, cpu_cores: 4, cpu_info: 'AMD EPYC 7B13', kernel_version: '6.12.41-amd64', boot_time: Date.now() - 93 * 86400000, load_avg: '0.07, 0.03, 0.00', ram_total: 4096, ram_used: 1024, disk_total: 80000, disk_used: 12000, swap_total: 2048, swap_used: 0, net_in_speed: 1024, net_out_speed: 512, net_rx: 274 * 1024 ** 3, net_tx: 393 * 1024 ** 3, net_rx_monthly: 27 * 1024 ** 3, net_tx_monthly: 3 * 1024 ** 3, traffic_limit: 1024, processes: 94, tcp_conn: 28, udp_conn: 2, price: '33.15', currency: '$', billing_cycle: 'month', expire_date: new Date(Date.now() + 19 * 86400000).toISOString(), arch: 'amd64', os: 'Debian', last_updated: Date.now(), ping_ct: 0, loss_ct: 0, ping_cu: null, loss_cu: null, ping_cm: false, loss_cm: false, ping: [{ ts: Date.now(), ct: 0, cu: null, cm: false }], loss: [{ ts: Date.now(), ct: 0, cu: null, cm: false }] }
+async function mock(page, { isPublic = true, turnstile = false, loggedIn = false, timeout = 0, rejectOnce = false, nodes = 1, multiSite = false, note = server.note } = {}) {
   const calls = [], sockets = [], apiErrors = [], pageErrors = []
   page.on('pageerror', error => pageErrors.push(error.message))
   await page.addInitScript(({ loggedIn }) => {
@@ -23,7 +23,7 @@ async function mock(page, { isPublic = true, turnstile = false, loggedIn = false
     if (!isPublic && !headers.authorization) return route.fulfill({ status: 401, json: { error: 'Unauthorized' } })
     if (turnstile && ((!headers['x-turnstile-token'] && !headers['x-turnstile-verified']) || (rejectOnce && !rejected))) { rejected = true; return route.fulfill({ status: 403, json: { error: 'Turnstile' } }) }
     const verified = turnstile ? { turnstile_verified: 'cached-verified' } : {}
-    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: index === 4 ? 82 : 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true, show_price: true, show_expire: true, show_tf: true }, ...verified } })
+    if (url.pathname === '/api/servers') return route.fulfill({ json: { servers: Array.from({ length: nodes }, (_, index) => ({ ...server, note, id: multiSite ? url.hostname : index ? `node-${index}` : 'one', name: nodes === 1 ? server.name : ['Tokyo Edge', 'Singapore Core', 'Frankfurt Relay', 'Hong Kong Edge', 'Los Angeles', 'London Gateway'][index], cpu: index === 4 ? 82 : 12 + index * 11, ram_used: 1024 + index * 350, server_group: index > 2 ? 'Development' : 'Production', region: ['JP', 'SG', 'DE', 'HK', 'US', 'GB'][index], last_updated: index === 5 ? Date.now() - 400000 : Date.now() })), stats: { total: nodes, online: nodes === 6 ? 5 : nodes, offline: nodes === 6 ? 1 : 0 }, sysConfig: { show_three_net_details: true, show_price: true, show_expire: true, show_tf: true }, ...verified } })
     if (url.pathname === '/api/server') return route.fulfill({ json: { ...server, ...verified } })
     if (url.pathname === '/api/history/all') return route.fulfill({ json: Array.from({ length: 24 }, (_, index) => ({ ...server, cpu: 12 + Math.sin(index / 3) * 8, net_in_speed: 65536 + Math.sin(index) * 15000, net_out_speed: 4096 + index * 30, tcp_conn: 28 + Math.floor(Math.sin(index) * 5), processes: 94 + Math.floor(Math.cos(index) * 4), timestamp: Date.now() - (23 - index) * 20000 })) })
     if (url.pathname === '/api/theme_options') return route.fulfill({ json: { success: true, ...verified } })
@@ -59,7 +59,7 @@ for (const isPublic of [true, false]) for (const turnstile of [false, true]) {
     expect(ctx.sockets[0].closed).toBe(true)
     expect(ctx.sockets[1].url.searchParams.get('subscribe')).toBe('one')
     expect(ctx.calls.find(call => call.path === '/api/history/all').query).toBe('?id=one&hours=0.167')
-    await page.locator('select').selectOption('6')
+    await page.getByRole('combobox', { name: '历史趋势', exact: true }).selectOption('6')
     await expect.poll(() => count(ctx, '/api/history/all')).toBe(2)
     await page.locator('.back-link').click()
     await expect(page.locator('.server-card')).toBeVisible()
@@ -173,6 +173,15 @@ test('desktop dark/light and mobile layouts', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto('/')
   await expect(page.locator('.server-card')).toHaveCount(6)
+  await page.evaluate(() => document.fonts.ready)
+  expect(await page.evaluate(() => document.fonts.check('14px "Inter Variable"'))).toBe(true)
+  await expect.poll(() => ctx.sockets.length).toBe(1)
+  for (const speed of [48000, 62000, 52000]) {
+    ctx.sockets[0].ws.send(JSON.stringify({ type: 'batchUpdate', updates: [{ serverId: 'one', samples: [{ data: { net_in_speed: speed, net_out_speed: speed / 4, last_updated: Date.now() }, ts: Date.now() }] }] }))
+    await expect(page.locator('.server-card').first()).toContainText(`${(speed / 1024).toFixed(1)} KiB/s`)
+    await page.waitForTimeout(1050)
+  }
+  await expect(page.locator('.speed-plot polyline')).toHaveCount(2)
   await page.screenshot({ path: 'artifacts/ink-dark.png', fullPage: true, animations: 'disabled' })
   await page.evaluate(() => document.documentElement.classList.remove('dark'))
   await expect(page.locator('.server-card').first()).toHaveCSS('border-color', 'rgb(233, 236, 242)')
@@ -224,5 +233,35 @@ test('history legends and probe controls share one range request', async ({ page
   await page.locator('.range-tabs').first().getByRole('button', { name: '6 h', exact: true }).click()
   await expect.poll(() => count(ctx, '/api/history/all')).toBe(2)
   expect(ctx.calls.filter(call => call.path === '/api/history/all').at(-1).query).toBe('?id=one&hours=6')
+  expect(ctx.pageErrors).toEqual([])
+})
+
+test('node notes and pricing use the intended fields without HTML injection', async ({ page }) => {
+  const ctx = await mock(page, { note: 'CN2 GIA, <b>备用节点</b>' })
+  await page.goto('/'); await expect(page.locator('.server-card')).toBeVisible()
+  await expect(page.locator('.price-fact')).toContainText('$33.15 / 月')
+  await expect(page.locator('.card-subtitle')).not.toContainText('$33.15')
+  await expect(page.locator('.ip-facts')).toContainText('IPv4IPv6')
+  await expect(page.locator('.notes-only')).toContainText('CN2 GIA')
+  await expect(page.locator('.notes-only')).toContainText('<b>备用节点</b>')
+  await expect(page.locator('.notes-only b')).toHaveCount(0)
+  await expect(page.locator('.notes-only')).not.toContainText('Production')
+  await page.getByRole('button', { name: '列表视图', exact: true }).click()
+  await expect(page.locator('.region-chip')).toContainText('日本')
+  await expect(page.locator('.node-table .note-chip').first()).toContainText('CN2 GIA')
+  expect(count(ctx, '/api/servers')).toBe(1); expect(ctx.pageErrors).toEqual([])
+})
+
+test('detail node switching uses the cached list without extra list or config requests', async ({ page }) => {
+  const ctx = await mock(page, { nodes: 6 })
+  await page.goto('/'); await expect(page.locator('.server-card')).toHaveCount(6)
+  await page.locator('.server-card').first().click()
+  await expect(page.locator('.chart-card').first()).toBeVisible()
+  await page.getByRole('combobox', { name: '切换节点', exact: true }).selectOption('0:node-1')
+  await expect(page).toHaveURL(/server\/node-1/)
+  await expect.poll(() => count(ctx, '/api/server')).toBe(2)
+  await expect.poll(() => count(ctx, '/api/history/all')).toBe(2)
+  expect(ctx.calls.filter(call => call.path === '/api/server').at(-1).query).toBe('?id=node-1')
+  expect(count(ctx, '/api/config')).toBe(1); expect(count(ctx, '/api/servers')).toBe(1)
   expect(ctx.pageErrors).toEqual([])
 })

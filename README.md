@@ -93,3 +93,13 @@ Settings → Secrets and variables → Actions 添加以下 Secrets：
 ## 来源与许可
 
 视觉参考 [jacob-bytes/komari-theme-ink](https://github.com/jacob-bytes/komari-theme-ink)，参考提交 `a706123c603e3b2825dde7302156702e6e8d6612`。保留上游 MIT 许可及版权声明，见 LICENSE。协议实现对照 [huilang-me/CF-Server-Monitor](https://github.com/huilang-me/CF-Server-Monitor/)。
+
+## 字体、节点备注与信息标签
+
+主题随构建打包 Inter Variable 字体，无需外部字体 CDN。中文回退到系统无衬线字体；字体 OFL 许可随构建放在 `assets/inter-OFL.txt`。
+
+卡片底部仅展示接口实际返回的 `note`，按换行、逗号或分号拆成标签；不会用 Default、分组或 IP 状态冒充备注。IPv4/IPv6 位于卡片右侧信息区，价格位于其下方。列表的信息栏展示地区、备注，以及从节点名称/备注匹配的已知商家；商家标签提示其推断来源，未识别时不编造。
+
+参考后端 `fa60c60d7a5e872c874fe92822206b32d072c3af` 的 `withoutPrivateServerFields` 在列表和详情中无条件移除了 note，所以仅修改主题不能读取后台备注。可选补丁 [`docs/backend-public-note.patch`](docs/backend-public-note.patch) 仅公开以 `[public]` 开头的备注，返回时去掉标记；其他备注继续隐藏，不增加查询。应用补丁并重新部署后端后，可在需要公开的节点备注填写 `[public] CN2 GIA, 备用节点`。补丁未自动应用到用户站点，不通过后台管理接口读取备注。
+
+详情的节点切换器仅使用已缓存的首页列表；直接打开单机详情时只显示当前节点，不额外请求列表。

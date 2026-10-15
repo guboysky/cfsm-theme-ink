@@ -12,6 +12,24 @@ export const loadValues = value => {
 }
 export const daysLeft = (value, now = Date.now()) => timestamp(value) ? Math.ceil((timestamp(value) - now) / 86400000) : null
 export const uptimeDays = (value, now = Date.now()) => timestamp(value) ? Math.max(0, Math.floor((now - timestamp(value)) / 86400000)) : null
+export function uptimeText(value, now = Date.now(), language = 'zh') {
+  const start = timestamp(value)
+  if (!start || start > now) return '—'
+  const minutes = Math.floor((now - start) / 60000)
+  const days = Math.floor(minutes / 1440), hours = Math.floor(minutes % 1440 / 60), remaining = minutes % 60
+  const labels = language === 'zh' ? ['天', '小时', '分钟'] : language === 'es' ? ['d', 'h', 'min'] : ['d', 'h', 'min']
+  return [[days, labels[0]], [hours, labels[1]], [remaining, labels[2]]].filter(([value], index) => value > 0 || index === 2).map(([value, label]) => `${value} ${label}`).join(' ')
+}
+export const nodeNotes = server => typeof server.note === 'string' ? server.note.trim().split(/[\n,，;；]+/).map(value => value.trim()).filter(Boolean) : []
+export function regionName(code, language = 'zh') {
+  if (!validRegion(code)) return ''
+  try { return new Intl.DisplayNames([language], { type: 'region' }).of(code.toUpperCase()) || code } catch { return code }
+}
+export function inferredProvider(server) {
+  const source = `${server.name || ''} ${typeof server.note === 'string' ? server.note : ''}`
+  const known = [['OVH', /\bovh\b/i], ['Netcup', /\bnetcup\b/i], ['RackNerd', /\bracknerd\b/i], ['DMIT', /\bdmit\b/i], ['Hetzner', /\bhetzner\b/i], ['Oracle', /\boracle\b/i], ['Tencent', /腾讯|tencent/i], ['Alibaba', /阿里|alibaba|aliyun/i], ['Vultr', /\bvultr\b/i]]
+  return known.find(([, pattern]) => pattern.test(source))?.[0] || ''
+}
 export function traffic(server) {
   const rx = Number(server.net_rx_monthly ?? server.net_rx) || 0
   const tx = Number(server.net_tx_monthly ?? server.net_tx) || 0

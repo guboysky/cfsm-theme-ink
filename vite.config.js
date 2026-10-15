@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { readFileSync } from 'node:fs'
 const escape = value => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
@@ -7,6 +8,9 @@ export default defineConfig(({ mode }) => {
     base: './',
     plugins: [vue(), {
       name: 'runtime-meta',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'assets/inter-OFL.txt', source: readFileSync(new URL('./node_modules/@fontsource-variable/inter/LICENSE', import.meta.url), 'utf8') })
+      },
       transformIndexHtml: () => {
         const tags = Object.entries({ apiBase: env.API_BASE, siteTitle: env.TITLE, backgroundImage: env.BACKGROUND_IMAGE }).filter(([, value]) => value).map(([name, value]) => ({ tag: 'meta', attrs: { name, content: escape(value) }, injectTo: 'head' }))
         if (env.CSP_API || env.CSP_STATIC) {
