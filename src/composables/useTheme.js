@@ -15,9 +15,9 @@ export const language = computed(() => {
   const configured = firstConfig.value.default_language || 'auto'
   return configured === 'auto' ? (navigator.language.startsWith('zh') ? 'zh' : 'en') : configured
 })
-Object.assign(words.zh, { providerHint: '由节点名称或接口返回的备注识别；非额外查询', previousNode: '上一节点', nextNode: '下一节点', switchNode: '切换节点', speed: '速度', connectionCount: '连接数', note: '备注' })
-Object.assign(words.en, { providerHint: 'Inferred from node name or returned note; no extra query', previousNode: 'Previous node', nextNode: 'Next node', switchNode: 'Switch node', speed: 'Speed', connectionCount: 'Connections', note: 'Note' })
-Object.assign(words.es, { providerHint: 'Identificado por nombre o nota; sin consultas adicionales', previousNode: 'Nodo anterior', nextNode: 'Nodo siguiente', switchNode: 'Cambiar nodo', speed: 'Velocidad', connectionCount: 'Conexiones', note: 'Nota' })
+Object.assign(words.zh, { providerHint: '由节点名称或接口返回的备注识别；非额外查询', previousNode: '上一节点', nextNode: '下一节点', switchNode: '切换节点', speed: '速度', connectionCount: '连接数', note: '备注', backgroundHint: '背景图片可在后台「设置 → 外观」中填写图片地址或上传，也支持单独设置手机背景。' })
+Object.assign(words.en, { providerHint: 'Inferred from node name or returned note; no extra query', previousNode: 'Previous node', nextNode: 'Next node', switchNode: 'Switch node', speed: 'Speed', connectionCount: 'Connections', note: 'Note', backgroundHint: 'Set or upload desktop and mobile backgrounds in administration → Settings → Appearance.' })
+Object.assign(words.es, { providerHint: 'Identificado por nombre o nota; sin consultas adicionales', previousNode: 'Nodo anterior', nextNode: 'Nodo siguiente', switchNode: 'Cambiar nodo', speed: 'Velocidad', connectionCount: 'Conexiones', note: 'Nota', backgroundHint: 'Configura o sube fondos de escritorio y móvil en Administración → Ajustes → Apariencia.' })
 export const t = key => (words[language.value] || words.en)[key] || key
 export function applyAppearance(config) {
   document.title = config.site_title || meta('siteTitle') || document.title

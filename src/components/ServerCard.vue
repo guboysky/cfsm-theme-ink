@@ -6,7 +6,7 @@ import MetricBar from './MetricBar.vue'
 import ProbeBuckets from './ProbeBuckets.vue'
 import NodeInformation from './NodeInformation.vue'
 import { online, percent, bytes, present, probes, probeLabel, probeText } from '../utils/metrics.js'
-import { osIcon, validRegion, uptimeDays, daysLeft, traffic, billing, loadValues, windowValues, probeTone } from '../utils/display.js'
+import { osIcon, validRegion, uptimeText, daysLeft, expiryDate, traffic, billing, loadValues, windowValues, probeTone } from '../utils/display.js'
 import { favorite, toggleFavorite } from '../composables/usePreferences.js'
 import { t, language } from '../composables/useTheme.js'
 const props = defineProps({ server: Object, site: Object, siteIndex: Number, now: Number, compact: Boolean })
@@ -14,7 +14,7 @@ const router = useRouter()
 const isOnline = computed(() => online(props.server, props.now))
 const transfer = computed(() => traffic(props.server))
 const price = computed(() => props.site.sysConfig.show_price === true ? billing(props.server, language.value) : '')
-const uptime = computed(() => uptimeDays(props.server.boot_time, props.now))
+const uptime = computed(() => uptimeText(props.server.boot_time, props.now, language.value))
 const expiry = computed(() => daysLeft(props.server.expire_date, props.now))
 const rows = computed(() => probes.filter(key => present(props.server[`ping_${key}`]) || present(props.server[`loss_${key}`])))
 const three = computed(() => rows.value.filter(key => ['ct', 'cu', 'cm'].includes(key)))
@@ -34,7 +34,7 @@ const open = () => router.push({ path: `/server/${props.server.id}`, query: { si
       <button class="favorite-button" :class="{ selected: favorite(siteIndex, server.id) }" :aria-label="t('favorite')" :aria-pressed="favorite(siteIndex, server.id)" @click.stop="toggleFavorite(siteIndex, server.id)"><Icon name="star" :size="17"/></button>
       <img v-if="validRegion(server.region)" class="flag-icon" :src="`${site.base}/flags/${server.region.toLowerCase()}.svg`" :alt="server.region">
     </div>
-    <div class="card-subtitle"><span>{{ t(isOnline ? 'online' : 'offline') }}<template v-if="uptime !== null"> {{ uptime }} {{ t('days') }}</template></span><span v-if="site.sysConfig.show_expire === true && expiry !== null" class="expiry-note" :class="{ warning: expiry <= 14 }">{{ t('remaining') }} {{ expiry }} {{ t('days') }}</span></div>
+    <div class="card-subtitle"><span class="card-uptime" :title="`${t(isOnline ? 'online' : 'offline')} ${uptime}`">{{ t(isOnline ? 'online' : 'offline') }} {{ uptime }}</span><span class="ip-facts"><span v-if="server.ip_v4 === '1'">IPv4</span><span v-if="server.ip_v6 === '1'">IPv6</span></span></div>
     <div class="resources">
       <MetricBar :label="t('cpu')" :value="Number(server.cpu)" :detail="loads || `${server.cpu_cores || '—'} vCPU`"/>
       <MetricBar :label="t('ram')" :value="percent(server.ram_used, server.ram_total)" :detail="`${bytes(Number(server.ram_used) * 1048576)} / ${bytes(Number(server.ram_total) * 1048576)}`"/>
@@ -44,7 +44,7 @@ const open = () => router.push({ path: `/server/${props.server.id}`, query: { si
     <div class="card-facts">
       <div><Icon name="upload" :size="13"/><strong>{{ bytes(server.net_out_speed) }}/s</strong></div>
       <div><Icon name="upload" :size="13"/><span>{{ bytes(server.net_tx) }}</span></div>
-      <div class="ip-facts"><Icon name="network" :size="13"/><span v-if="server.ip_v4 === '1'" class="ip-label">IPv4</span><span v-if="server.ip_v6 === '1'" class="ip-label">IPv6</span><span v-if="server.ip_v4 !== '1' && server.ip_v6 !== '1'">—</span></div>
+      <div class="expiry-fact" :title="site.sysConfig.show_expire === true && expiry !== null ? `${t('remaining')} ${expiry} ${t('days')}` : ''"><Icon name="calendar" :size="13"/><span :class="{ warning: expiry !== null && expiry <= 14 }">{{ site.sysConfig.show_expire === true ? expiryDate(server.expire_date) : '—' }}</span></div>
       <div><Icon name="download" :size="13"/><strong>{{ bytes(server.net_in_speed) }}/s</strong></div>
       <div><Icon name="download" :size="13"/><span>{{ bytes(server.net_rx) }}</span></div>
       <div class="price-fact"><Icon name="wallet" :size="13"/><span>{{ price || '—' }}</span></div>

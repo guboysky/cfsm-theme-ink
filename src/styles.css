@@ -194,3 +194,26 @@ body { -webkit-font-smoothing: antialiased; }
   .probe-selectors strong, .probe-selectors small { font-size: 12px; }
   .probes-section > .chart-card .history-plot { height: 235px; }
 }
+
+/* Tighter centered pages and a balanced, denser list. */
+.header-inner, main, footer { max-width: 1280px; }
+.node-table { border-spacing: 0 4px; }
+.node-table th:nth-child(1), .node-table th:nth-child(2) { width: 40px; }
+.node-table th:nth-child(3) { width: 22%; }
+.node-table th:nth-child(4) { width: 17%; }
+.node-table th:nth-child(5) { width: 14%; }
+.node-table th:last-child { width: 11%; }
+.node-table td { padding: 15px 8px; }
+.node-table th { padding-inline: 8px; }
+.table-node p { margin-left: 0; }
+.node-table td > strong { font-size: 12px; white-space: nowrap; }
+.card-subtitle { display: flex; justify-content: space-between; gap: 6px; overflow: visible; }
+.card-uptime { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-subtitle .ip-facts { display: inline-flex; flex-shrink: 0; gap: 5px; font-size: 11px; }
+@media (max-width: 1150px) {
+  .node-table { min-width: 1040px; }
+}
+@media (max-width: 560px) {
+  .card-subtitle { font-size: 12px; }
+  .card-subtitle .ip-facts { font-size: 12px; }
+}

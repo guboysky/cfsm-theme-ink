@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { traffic, windowValues, loadValues, billing, probeTone, uptimeDays } from '../src/utils/display.js'
-import { probeText, timestamp } from '../src/utils/metrics.js'
+import { traffic, windowValues, loadValues, billing, probeTone, uptimeDays, uptimeText, expiryDate } from '../src/utils/display.js'
+import { probeText, timestamp, probeLabel } from '../src/utils/metrics.js'
+import { timeTicks } from '../src/utils/chart.js'
 test('traffic quota is in GiB, monthly counters and calculation mode are respected', () => {
   const server = { traffic_limit: 2, net_rx: 100e9, net_tx: 100e9, net_rx_monthly: 1024 ** 3, net_tx_monthly: 0 }
   assert.equal(traffic(server).percentage, 50)
@@ -26,4 +27,26 @@ test('uptime, pricing and load render only provided information', () => {
   assert.equal(timestamp('1700000000000'), 1700000000000)
   assert.equal(uptimeDays('1700000000', 1700000000000 + 5 * 86400000), 5)
   assert.equal(probeText(20.3333333333333, ' ms'), '20.3 ms')
+  assert.equal(uptimeText(1700000000000, 1700000000000 + 3 * 3600000), '3小时0分')
+  assert.equal(uptimeText(1700000000000, 1700000000000 + 3 * 86400000 + 3660000), '3天1小时1分')
+  assert.equal(uptimeText(undefined), '—')
+  assert.equal(expiryDate(new Date(2026, 10, 1).getTime()), '2026.11.1')
+  assert.equal(expiryDate(undefined), '—')
+})
+
+test('probe names prefer configured names and translate default carrier codes', () => {
+  assert.equal(probeLabel({ default_language: 'zh', custom_ct_name: 'CT' }, 'ct'), '电信')
+  assert.equal(probeLabel({ default_language: 'zh', custom_ct_name: '广东电信' }, 'ct'), '广东电信')
+  assert.equal(probeLabel({ default_language: 'en' }, 'cu'), 'CU')
+  assert.equal(probeLabel({ default_language: 'zh', node_1_name: '香港腾讯' }, 'node_1'), '香港腾讯')
+})
+
+test('time ticks stay spaced independently of clustered samples', () => {
+  const start = 1700000000000, end = start + 600000, width = 1200
+  const ticks = timeTicks(start, end, width)
+  assert.ok(ticks.length > 3)
+  for (let index = 1; index < ticks.length; index++) assert.ok((ticks[index].ratio - ticks[index - 1].ratio) * width >= 85)
+  assert.ok(ticks.every(tick => tick.value >= start && tick.value <= end))
+  assert.ok(timeTicks(start, start + 20000, 280).every(tick => tick.seconds))
+  assert.deepEqual(timeTicks(undefined, undefined, 300), [])
 })

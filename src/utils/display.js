@@ -17,8 +17,14 @@ export function uptimeText(value, now = Date.now(), language = 'zh') {
   if (!start || start > now) return '—'
   const minutes = Math.floor((now - start) / 60000)
   const days = Math.floor(minutes / 1440), hours = Math.floor(minutes % 1440 / 60), remaining = minutes % 60
-  const labels = language === 'zh' ? ['天', '小时', '分钟'] : language === 'es' ? ['d', 'h', 'min'] : ['d', 'h', 'min']
-  return [[days, labels[0]], [hours, labels[1]], [remaining, labels[2]]].filter(([value], index) => value > 0 || index === 2).map(([value, label]) => `${value} ${label}`).join(' ')
+  if (language === 'zh') return `${days ? `${days}天` : ''}${hours}小时${remaining}分`
+  return `${days ? `${days}d ` : ''}${hours}h ${remaining}min`
+}
+export function expiryDate(value) {
+  const stamp = timestamp(value)
+  if (!stamp) return '—'
+  const date = new Date(stamp)
+  return `${date.getFullYear()}.${date.getMonth() + 1}.${date.getDate()}`
 }
 export const nodeNotes = server => typeof server.note === 'string' ? server.note.trim().split(/[\n,，;；]+/).map(value => value.trim()).filter(Boolean) : []
 export function regionName(code, language = 'zh') {

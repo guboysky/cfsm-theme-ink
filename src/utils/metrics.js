@@ -42,5 +42,11 @@ export function bytes(value) {
 }
 export const percent = (used, total) => Number(total) > 0 ? Number(used) / Number(total) * 100 : 0
 export const probeText = (value, unit, timeout = 'Timeout') => value === null ? timeout : present(value) ? `${typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(1)) : value}${unit}` : '—'
-export const probeLabel = (config, key) => config[key.startsWith('node_') ? `${key}_name` : `custom_${key}_name`] || ({ ct: 'CT', cu: 'CU', cm: 'CM', bd: 'BGP' }[key] ?? `Node ${key.slice(-1)}`)
+export function probeLabel(config, key) {
+  const configured = config[key.startsWith('node_') ? `${key}_name` : `custom_${key}_name`]
+  const locale = config.default_language === 'auto' ? globalThis.navigator?.language || 'en' : config.default_language || 'zh'
+  const chinese = locale.startsWith('zh')
+  if (configured && !(chinese && ['ct', 'cu', 'cm'].includes(key) && configured.trim().toLowerCase() === key)) return configured
+  return (chinese ? { ct: '电信', cu: '联通', cm: '移动', bd: 'BGP' } : { ct: 'CT', cu: 'CU', cm: 'CM', bd: 'BGP' })[key] ?? `${chinese ? '探针' : 'Node'} ${key.slice(-1)}`
+}
 export const priceText = value => value === '0' || value === '-1' ? 'Free' : String(value ?? '').trim()

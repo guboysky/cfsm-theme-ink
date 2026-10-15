@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onBeforeUnmount, useId } from 'vue'
 import Icon from './Icon.vue'
 import { bytes, timestamp } from '../utils/metrics.js'
+import { timeTicks } from '../utils/chart.js'
 import { t } from '../composables/useTheme.js'
 const props = defineProps({ title: String, icon: String, series: { type: Array, default: () => [] }, times: { type: Array, default: () => [] }, summary: String, max: Number, unit: String, unitLabel: String })
 const hidden = ref([]), hovered = ref(null), plot = ref(null), size = ref({ width: 600, height: 210 }), id = useId()
@@ -46,10 +47,8 @@ const paths = computed(() => visible.value.map(series => {
 }))
 const format = value => props.unit === 'bytes' ? bytes(value) : `${Number(value.toFixed(value < 1 && value > 0 ? 2 : 1))}${props.unit || ''}`
 const time = value => timestamp(value) ? new Date(timestamp(value)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
-const ticks = computed(() => {
-  const count = Math.min(Math.max(2, Math.floor((bounds.value.right - bounds.value.left) / 80)), 14, props.times.length)
-  return Array.from({ length: count }, (_, index) => Math.round(index * (props.times.length - 1) / Math.max(1, count - 1)))
-})
+const ticks = computed(() => timeTicks(timesMs.value[0], timesMs.value.at(-1), bounds.value.right - bounds.value.left))
+const tickLabel = tick => new Date(tick.value).toLocaleString([], { ...(tick.date ? { month: 'numeric', day: 'numeric' } : {}), hour: '2-digit', minute: '2-digit', ...(tick.seconds ? { second: '2-digit' } : {}) })
 const tooltipStyle = computed(() => ({ left: `${Math.max(5, Math.min(size.value.width - 185, x(hovered.value || 0) + 12))}px` }))
 function hover(event) {
   const rect = event.currentTarget.getBoundingClientRect(), position = (event.clientX - rect.left) / rect.width * size.value.width
@@ -68,7 +67,7 @@ function toggle(index) { hidden.value = hidden.value.includes(index) ? hidden.va
         <defs><linearGradient v-for="series in visible" :key="series.index" :id="`${id}-${series.index}`" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" :stop-color="series.color" stop-opacity=".14"/><stop offset="100%" :stop-color="series.color" stop-opacity=".015"/></linearGradient></defs>
         <g v-for="n in 5" :key="n"><line :x1="bounds.left" :x2="bounds.right" :y1="bounds.top + (n - 1) * (bounds.bottom - bounds.top) / 4" :y2="bounds.top + (n - 1) * (bounds.bottom - bounds.top) / 4" class="gridline"/><text :x="bounds.left - 9" :y="bounds.top + 4 + (n - 1) * (bounds.bottom - bounds.top) / 4" text-anchor="end">{{ format(limits.left * (5 - n) / 4) }}</text><text v-if="series.some(series => series.right)" :x="bounds.right + 10" :y="bounds.top + 4 + (n - 1) * (bounds.bottom - bounds.top) / 4">{{ Number((limits.right * (5 - n) / 4).toFixed(2)) }}</text></g>
         <g v-for="series in paths" :key="series.index"><g v-for="(segment, index) in series.segments" :key="index"><path v-if="series.fill" :d="segment.area" :fill="`url(#${id}-${series.index})`"/><path :d="segment.path" fill="none" :stroke="series.color" :stroke-dasharray="series.dashed ? '5 3' : undefined" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></g></g>
-        <text v-for="index in ticks" :key="index" :x="x(index)" :y="size.height - 8" text-anchor="middle">{{ time(times[index]) }}</text>
+        <text v-for="tick in ticks" :key="tick.value" class="time-tick" :x="bounds.left + tick.ratio * (bounds.right - bounds.left)" :y="size.height - 8" text-anchor="middle">{{ tickLabel(tick) }}</text>
         <g v-if="hovered !== null"><line :x1="x(hovered)" :x2="x(hovered)" y1="15" :y2="bounds.bottom" class="hover-line"/><circle v-for="series in visible.filter(series => numeric(series.values[hovered]))" :key="series.index" :cx="x(hovered)" :cy="y(series.values[hovered], series.right)" r="3.2" :fill="series.color" stroke="var(--card)" stroke-width="1.5"/></g>
       </svg>
       <div v-if="!times.length" class="plot-empty">{{ t('noHistory') }}</div>
