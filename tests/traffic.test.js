@@ -1,0 +1,51 @@
+import { describe, it, expect } from 'vitest'
+import { TrafficSession, rankedNodes, distribution } from '../src/utils/traffic.js'
+const ts = Date.now()
+const sample = (offset, data, key = 'a', base = 'origin-a') => ({ key, base, timestamp: ts + offset, data })
+describe('session traffic without additional REST', () => {
+  it('needs two explicit counter reports and retains real zero deltas', () => {
+    const session = new TrafficSession()
+    expect(session.push([sample(0, { net_rx: 100, net_tx: 50 })])).toEqual([])
+    expect(session.push([sample(1000, { net_rx: 120, net_tx: 50 })])[0]).toMatchObject({ downBytes: 20, upBytes: 0 })
+  })
+  it('does not treat missing incremental counters as samples', () => {
+    const session = new TrafficSession()
+    session.push([sample(0, { net_rx: 100 })])
+    expect(session.push([sample(1000, { cpu: 12, net_in_speed: 10 })])).toEqual([])
+    expect(session.push([sample(2000, { net_rx: 140 })])[0].downBytes).toBe(40)
+  })
+  it('resets on counter rollback, disconnection and long gaps', () => {
+    const session = new TrafficSession()
+    session.push([sample(0, { net_rx: 100 })])
+    expect(session.push([sample(1000, { net_rx: 20 })])).toEqual([])
+    expect(session.push([sample(2000, { net_rx: 30 })])[0].downBytes).toBe(10)
+    session.disconnect('origin-a')
+    expect(session.push([sample(3000, { net_rx: 60 })])).toEqual([])
+    expect(session.push([sample(400000, { net_rx: 1000 })])).toEqual([])
+  })
+  it('ignores old and duplicate samples without moving the baseline', () => {
+    const session = new TrafficSession()
+    session.push([sample(1000, { net_rx: 100 })])
+    expect(session.push([sample(0, { net_rx: 10 }), sample(1000, { net_rx: 10 })])).toEqual([])
+    expect(session.push([sample(2000, { net_rx: 150 })])[0].downBytes).toBe(50)
+  })
+  it('keeps backend keys separate and excludes absent/invalid counters', () => {
+    const session = new TrafficSession()
+    session.push([sample(0, { net_rx: 100 }, 'origin-a:id'), sample(0, { net_rx: 900 }, 'origin-b:id', 'origin-b')])
+    const next = session.push([sample(1000, { net_rx: 120 }, 'origin-a:id'), sample(1000, { net_rx: 950, net_tx: false }, 'origin-b:id', 'origin-b')])
+    expect(next.map(event => event.downBytes)).toEqual([20, 50])
+    expect(next[1].upBytes).toBeUndefined()
+  })
+  it('ranks valid zero values, preserves backend links and groups smaller shares', () => {
+    const nodes = Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: `node ${i}`, _key: `backend:${i}`, _base: 'backend', net_rx: i }))
+    const ranks = rankedNodes([...nodes, { net_rx: null }, { net_rx: false }], 'net_rx')
+    expect(ranks).toHaveLength(8)
+    expect(ranks[0]).toMatchObject({ id: '7', base: 'backend', value: 7 })
+    const flow = distribution(ranks)
+    expect(flow.total).toBe(28)
+    expect(flow.slices).toHaveLength(6)
+    expect(flow.slices.at(-1)).toMatchObject({ other: true, value: 3 })
+    expect(flow.slices.reduce((sum, item) => sum + item.percent, 0)).toBeCloseTo(100)
+    expect(distribution([])).toEqual({ total: 0, slices: [] })
+  })
+})

@@ -1,0 +1,28 @@
+{
+  "name": "cfsm-terracotta-theme",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "build:github-page": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:browser": "node tests/browser.mjs",
+    "test:upstream": "node tests/upstream.mjs",
+    "preview:demo": "node tests/browser.mjs --serve"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.59.0",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5",
+    "ws": "^8.18.3"
+  }
+}

@@ -1,0 +1,54 @@
+name: Build theme to dist branch
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: theme-dist
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build static theme
+        run: npm run build:github-page
+        env:
+          API_BASE: ${{ secrets.API_BASE }}
+          TITLE: ${{ secrets.TITLE }}
+          BACKGROUND_IMAGE: ${{ secrets.BACKGROUND_IMAGE }}
+          CSP_API: ${{ secrets.CSP_API }}
+          CSP_STATIC: ${{ secrets.CSP_STATIC }}
+      - name: Append build to dist history
+        shell: bash
+        run: |
+          set -euo pipefail
+          message_file="$RUNNER_TEMP/source-message.txt"
+          git log -1 --format=%B "$GITHUB_SHA" > "$message_file"
+          output_dir="$RUNNER_TEMP/theme-output"
+          mkdir -p "$output_dir"
+          cp -a dist/. "$output_dir/"
+          if git ls-remote --exit-code --heads origin dist >/dev/null 2>&1; then
+            git fetch origin dist
+            git switch -C dist FETCH_HEAD
+          else
+            git switch --orphan dist
+          fi
+          git rm -rf --ignore-unmatch .
+          git clean -fdx
+          cp -a "$output_dir/." .
+          git add index.html assets
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -F "$message_file"
+          git push origin HEAD:dist
