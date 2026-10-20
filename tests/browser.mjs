@@ -18,8 +18,8 @@ function fixture(id = 'node-a', name = '香港 · 边缘节点 01') {
   const expiry = ({ 'node-a': '2026-11-01', 'node-c': '2026-10-27', 'node-d': '2026-11-08', 'node-e': '2026-11-14', 'node-f': '' })[id] ?? '2026-12-31'
   return { id, name, server_group: '生产环境', tags: 'Edge,Premium', region: 'HK', os: 'Ubuntu 24.04', arch: 'x86_64', cpu_cores: 4, cpu_info: 'Intel Xeon Platinum 8375C', ram_total: 8192, ram_used: 2540, swap_total: 2048, swap_used: 0, disk_total: 102400, disk_used: 28000, cpu: 23.5, net_in_speed: 1240000, net_out_speed: 420000, net_rx: 12600000000 * multiplier, net_tx: 896000000 * multiplier, ping_ct: 0, ping_cu: null, ping_cm: false, loss_ct: 0, loss_cu: null, ip_v4: '1', ip_v6: '0', is_hidden: '0', auto_renewal: '0', price: '0', billing_cycle: 'month', expire_date: expiry, boot_time: String(now() - (7 * 24 + 23) * 3600000), load_avg: '0.00 0.20 0.10', traffic_limit: id === 'node-a' ? '0' : '1024', traffic_calc_type: 'total', net_rx_monthly: 1024 ** 3 * multiplier, net_tx_monthly: 1024 ** 3, processes: 85, tcp_conn: 61, udp_conn: 8, gpu_info: '[{"id":"0","name":"NVIDIA RTX 3060","info":0}]', last_updated: now(), timestamp: now(), ping: Array.from({ length: 8 }, (_, i) => ({ ts: now() - (8 - i) * 60000, ct: 0, cu: null, cm: false, bd: 30 + i * 4 })), loss: Array.from({ length: 8 }, (_, i) => ({ ts: now() - (8 - i) * 60000, ct: 0, cu: null, cm: false, bd: 0 })) }
 }
-function history() {
-  return Array.from({ length: 24 }, (_, i) => ({ ...fixture(), timestamp: now() - (24 - i) * 25000, cpu: 15 + (i % 7) * 4, ram_used: 2200 + i * 13, net_in_speed: 800000 + i * 20000, net_out_speed: 300000 + (i % 5) * 40000, gpu_info: '[{"id":"0","name":"NVIDIA RTX 3060","info":0}]' }))
+function history(id = 'node-a') {
+  return Array.from({ length: 24 }, (_, i) => ({ ...fixture(id), timestamp: now() - (24 - i) * 25000, net_rx: fixture(id).net_rx - (24 - i) * 500000, net_tx: fixture(id).net_tx - (24 - i) * 150000, cpu: 15 + (i % 7) * 4, ram_used: 2200 + i * 13, net_in_speed: 800000 + i * 20000, net_out_speed: 300000 + (i % 5) * 40000, gpu_info: '[{"id":"0","name":"NVIDIA RTX 3060","info":0}]' }))
 }
 const servers = await Promise.all(ports.map(async (port, backend) => {
   const server = http.createServer(async (req, res) => {
@@ -56,7 +56,7 @@ const servers = await Promise.all(ports.map(async (port, backend) => {
           return json({ servers: items, stats: { total: items.length, online: items.length - (backend ? 0 : 1), offline: backend ? 0 : 1, globalSpeedIn: 5000000, globalSpeedOut: 2000000 }, sysConfig: { show_three_net_details: !scenario.includes('nocharts'), show_price: true, show_expire: !scenario.includes('noexpiry'), show_tf: !scenario.includes('notraffic') } })
         }
         if (url.pathname === '/api/server') return json({ ...fixture(url.searchParams.get('id')), sysConfig: { show_price: true, show_expire: !scenario.includes('noexpiry'), show_tf: true } })
-        if (url.pathname === '/api/history/all') return json(history())
+        if (url.pathname === '/api/history/all') return json(history(url.searchParams.get('id')))
         if (url.pathname === '/api/theme_options' && req.method === 'POST') {
           if (!authenticated) return json({ error: 'Unauthorized' }, 401)
           let body = ''; for await (const chunk of req) body += chunk
@@ -133,6 +133,7 @@ async function contextFor(scenario, authenticated = false) {
 }
 const waitFor = async predicate => { for (let i = 0; i < 80; i++) { if (predicate()) return; await new Promise(r => setTimeout(r, 50)) } assert.fail('Timed out waiting for fixture condition') }
 async function test(name, run) { try { await run(); passed++; console.log(`PASS ${name}`) } catch (error) { failures.push({ name, error }); console.error(`FAIL ${name}: ${error.stack}`) } }
+const detailHistoryCount = entry => entry.log().filter(row => row.path === '/api/history/all' && new URLSearchParams(row.search).get('hours') !== '0.167').length
 const count = (entry, path) => entry.log().filter(r => r.path === path).length
 const visible = (page, hidden) => page.evaluate(value => { Object.defineProperty(document, 'hidden', { configurable: true, value }); document.dispatchEvent(new Event('visibilitychange')) }, hidden)
 
@@ -147,7 +148,7 @@ try {
       await page.waitForTimeout(1300)
       assert.equal(count(entry, '/api/config'), scenario.includes('on') ? 2 : 1)
       assert.equal(count(entry, '/api/servers'), 1)
-      assert.equal(count(entry, '/api/history/all'), 0)
+      assert.equal(detailHistoryCount(entry), 0)
       const serverReq = entry.log().find(r => r.path === '/api/servers')
       assert.equal(serverReq.headers['x-turnstile-verified'], scenario.includes('on') ? 'proof-0' : undefined)
       assert.equal(entry.sockets()[0].token, null, 'same-origin WS must use cookies')
@@ -155,20 +156,20 @@ try {
       await page.locator('.detail-view-switch').waitFor(); await page.getByRole('tab', { name: '机器信息', exact: true }).click()
       assert.equal(entry.sockets().length, 1, 'modal reuses homepage socket'); assert.equal(entry.sockets()[0].subscribe, 'all')
       assert.equal(count(entry, '/api/servers'), 1)
-      assert.equal(count(entry, '/api/history/all'), 1)
-      assert.match(entry.log().find(r => r.path === '/api/history/all').search, /hours=24/)
+      assert.equal(detailHistoryCount(entry), 1)
+      assert.match(entry.log().find(r => r.path === '/api/history/all' && new URLSearchParams(r.search).get('hours') === '24').search, /hours=24/)
       assert.equal(await page.getByRole('heading', { name: '磁盘 IO', exact: true }).count(), 0)
       assert.match(await page.locator('.charts-grid').innerText(), /超时/)
       assert.equal(await page.getByRole('heading', { name: 'GPU 使用率' }).count(), 1)
       await page.getByLabel('历史时间范围').selectOption('0.5')
-      await waitFor(() => count(entry, '/api/history/all') === 2)
+      await waitFor(() => detailHistoryCount(entry) === 2)
       await visible(page, true)
       await waitFor(() => entry.sockets().every(s => s.closed))
       const beforeRestore = count(entry, '/api/server')
       await visible(page, false)
       await waitFor(() => count(entry, '/api/server') === beforeRestore + 1)
       await waitFor(() => entry.sockets().filter(s => s.subscribe === 'all').length === 2)
-      assert.equal(count(entry, '/api/history/all'), 2, 'visibility must not refresh history')
+      assert.equal(detailHistoryCount(entry), 2, 'visibility must not refresh history')
       await page.locator('.back-link').click()
       await page.locator('.server-card').first().waitFor()
       assert.equal(count(entry, '/api/servers'), 1, 'route return must reuse the list')
@@ -262,7 +263,7 @@ try {
     const entry = await contextFor('public-off')
     await entry.page.goto(`${origin}/#/server/node-a`); await entry.page.locator('.detail-view-switch').waitFor(); await entry.page.getByRole('tab', { name: '机器信息', exact: true }).click()
     assert.equal(count(entry, '/api/servers'), 0); assert.equal(count(entry, '/api/server'), 1)
-    assert.equal(count(entry, '/api/history/all'), 1)
+    assert.equal(detailHistoryCount(entry), 1)
     await waitFor(() => entry.sockets().length === 1)
     assert.equal(entry.sockets()[0].subscribe, 'node-a')
     assert.deepEqual(entry.errors, []); await entry.context.close()
@@ -279,14 +280,14 @@ try {
     await entry.page.locator('.detail-view-switch').waitFor(); await entry.page.getByRole('tab', { name: '机器信息', exact: true }).click()
     release()
     await entry.page.locator('.chart-panel').filter({ hasText: 'GPU 使用率' }).waitFor()
-    assert.equal(count(entry, '/api/history/all'), 1)
+    assert.equal(detailHistoryCount(entry), 1)
     assert.equal(count(entry, '/api/server'), 2)
     assert.deepEqual(entry.errors, []); await entry.context.close()
   })
   await test('visual layouts: desktop, phone, dark and detail', async () => {
     const entry = await contextFor('public-off-preview-seven'), { page } = entry
     await page.goto(origin); await page.locator('.server-card').first().waitFor()
-    await page.getByRole('img', { name: '会话流量柱状图' }).waitFor()
+    await page.getByRole('img', { name: '近 10 分钟流量柱状图' }).waitFor()
     await page.waitForTimeout(1100)
     for (const width of [1440, 1200, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 1100 }); await page.screenshot({ path: `test-results/dashboard-${width}.png`, fullPage: true })
@@ -301,7 +302,7 @@ try {
   await test('disabled three-net details never fetch or render mini charts', async () => {
     const entry = await contextFor('public-off-nocharts')
     await entry.page.goto(origin); await entry.page.locator('.server-card').first().waitFor()
-    assert.equal(await entry.page.locator('.card-charts').count(), 0); assert.equal(count(entry, '/api/history/all'), 0)
+    assert.equal(await entry.page.locator('.card-charts').count(), 0); assert.equal(detailHistoryCount(entry), 0)
     await entry.context.close()
   })
   await test('backend language and preferred theme drive the UI', async () => {
@@ -311,15 +312,16 @@ try {
     assert.equal(await entry.page.locator('html').getAttribute('data-theme'), 'dark')
     await entry.context.close()
   })
-  await test('annotated layout and live analytics reuse existing samples without history requests', async () => {
+  await test('fixed ten-minute traffic history loads once and filters without refetching', async () => {
     const entry = await contextFor('public-off'), { page } = entry
     await page.goto(origin); await page.locator('.server-card').first().waitFor()
     assert.equal(await page.locator('.page-heading').count(), 0)
     assert.equal(await page.locator('.servers-panel > .section-heading').count(), 0)
     assert.equal(await page.locator('.filterbar .segmented').count(), 1)
     assert.ok((await page.locator('.summary-card').first().boundingBox()).height <= 90)
-    await page.getByRole('img', { name: '会话流量柱状图' }).waitFor()
+    await page.getByRole('img', { name: '近 10 分钟流量柱状图' }).waitFor()
     await page.getByRole('heading', { name: '节点流量排行' }).waitFor()
+    await waitFor(() => count(entry, '/api/history/all') === 6)
     await page.getByRole('heading', { name: '节点实时排行' }).waitFor()
     await page.getByRole('heading', { name: '流量分布' }).waitFor()
     const summaryBox = await page.locator('.summary-grid').boundingBox(), insightsBox = await page.locator('.traffic-insights').boundingBox(), filterBox = await page.locator('.filterbar').boundingBox()
@@ -327,15 +329,44 @@ try {
     assert.ok(filterBox.y >= insightsBox.y + insightsBox.height)
     await page.getByLabel('图表节点').selectOption(`${origin}:node-a`)
     await page.getByLabel('流量方向').selectOption('up')
-    await page.getByLabel('会话时间范围').selectOption('30')
+    assert.equal(await page.getByLabel('会话时间范围').count(), 0)
+    assert.equal(await page.locator('.traffic-timeline>span').count(), 6)
     await page.getByLabel('实时排行指标').selectOption('net_out_speed')
     await page.getByText('采样明细', { exact: true }).click()
     assert.ok(await page.locator('.traffic-detail-scroll tbody tr').count() > 0)
-    assert.equal(count(entry, '/api/history/all'), 0)
+    assert.equal(detailHistoryCount(entry), 0)
+    assert.equal(count(entry, '/api/history/all'), 6, 'one initial ten-minute history per node; filters never refetch')
     assert.equal(count(entry, '/api/servers'), 1)
     assert.equal(count(entry, '/api/config'), 1)
     assert.deepEqual(entry.errors, [])
     await entry.context.close()
+  })
+  await test('fixed traffic chart exists from history before any WebSocket samples', async () => {
+    const entry = await contextFor('public-off'), { page } = entry
+    await page.addInitScript(() => {
+      window.WebSocket = class {
+        constructor() { this.readyState = 0; setTimeout(() => { this.readyState = 1; this.onopen?.({}) }, 0) }
+        send() {}
+        close() { this.readyState = 3 }
+      }
+    })
+    await page.goto(origin)
+    await page.getByRole('img', { name: '近 10 分钟流量柱状图' }).waitFor()
+    await waitFor(() => count(entry, '/api/history/all') === 6)
+    assert.ok(await page.locator('.traffic-bar-plot rect').count() > 10)
+    assert.equal(entry.sockets().length, 0, 'chart must be available before live reports')
+    const stamps = await page.locator('.traffic-timeline>span').allTextContents()
+    const seconds = stamp => stamp.split(':').reduce((sum, value) => sum * 60 + Number(value), 0)
+    assert.equal((seconds(stamps.at(-1)) - seconds(stamps[0]) + 86400) % 86400, 600)
+    assert.equal(stamps.length, 6)
+    assert.doesNotMatch(await page.locator('.traffic-trend').innerText(), /本次会话|仅记录本次/)
+    assert.equal(await page.locator('.rank-footer').count(), 0)
+    await page.getByLabel('流量方向').selectOption('up')
+    await page.getByLabel('图表节点').selectOption(origin + ':node-a')
+    await page.waitForTimeout(1300)
+    assert.equal(count(entry, '/api/history/all'), 6)
+    assert.equal(count(entry, '/api/servers'), 1)
+    assert.deepEqual(entry.errors, []); await entry.context.close()
   })
   await test('site traffic switch hides counter charts and distribution', async () => {
     const entry = await contextFor('public-off-notraffic'), { page } = entry
@@ -344,7 +375,7 @@ try {
     assert.equal(await page.locator('.flow-panel').count(), 0)
     assert.equal(await page.getByRole('heading', { name: '节点流量排行' }).count(), 0)
     assert.equal(await page.getByRole('heading', { name: '到期时间排行榜' }).count(), 1)
-    assert.equal(count(entry, '/api/history/all'), 0)
+    assert.equal(detailHistoryCount(entry), 0)
     await entry.context.close()
   })
   await test('reference cards show true resource values, tri-state segments and expiry badges', async () => {
@@ -361,7 +392,7 @@ try {
     assert.ok(await card.locator('.reference-probe[data-lane="cu"] .segment-timeout').count() > 0)
     assert.equal(await page.getByRole('button', { name: '显示设置' }).count(), 0)
     assert.ok(await page.locator('.reference-probe').count() > 0)
-    assert.equal(count(entry, '/api/history/all'), 0)
+    assert.equal(detailHistoryCount(entry), 0)
     assert.deepEqual(entry.errors, []); await entry.context.close()
   })
   await test('distribution moved to top and expiry ranking sorts configured dates with valid node links', async () => {
@@ -375,7 +406,7 @@ try {
     const dates = await page.locator('.expiry-table tbody tr td:nth-child(3)').allTextContents()
     assert.deepEqual(dates, ['2026-10-27', '2026-11-01', '2026-11-08', '2026-11-14', '2026-12-31'])
     assert.match(await page.locator('.expiry-panel .insight-heading').innerText(), /共 5 台/)
-    assert.equal(count(entry, '/api/servers'), 1); assert.equal(count(entry, '/api/history/all'), 0)
+    assert.equal(count(entry, '/api/servers'), 1); assert.equal(detailHistoryCount(entry), 0)
     await page.locator('.expiry-table tbody tr').first().getByRole('link').click(); await page.locator('.detail-view-switch').waitFor(); await page.getByRole('tab', { name: '机器信息', exact: true }).click()
     assert.match(page.url(), /server\/node-c/)
     assert.deepEqual(entry.errors, []); await entry.context.close()
@@ -404,7 +435,7 @@ try {
     const [hk, sg, ubuntu] = await Promise.all(['/flags/hk.svg', '/flags/sg.svg', '/os-icons/os-ubuntu.svg'].map(path => fetch(origin + path).then(r => r.text())))
     assert.notEqual(hk, sg); assert.notEqual(hk, ubuntu)
     assert.equal(await page.locator('.expiry-table tbody tr').first().locator('img').getAttribute('src'), `${origin}/flags/sg.svg`)
-    assert.equal(count(entry, '/api/history/all'), 0)
+    assert.equal(detailHistoryCount(entry), 0)
     assert.deepEqual(entry.errors, []); await entry.context.close()
   })
   await test('five-row rankings retain all totals, readable numbers and smaller latency segments', async () => {
@@ -416,9 +447,7 @@ try {
     assert.deepEqual(lastRows, ['2026-10-27', '2026-11-01', '2026-11-08', '2026-11-14', '2026-12-31'])
     const ranks = page.locator('.insight-bottom > .insight-panel:not(.expiry-panel)')
     for (const panel of await ranks.all()) assert.equal(await panel.locator('.insight-rank-row').count(), 5)
-    assert.match(await ranks.first().locator('.rank-footer').innerText(), /5 \/ 8/)
-    assert.match(await ranks.last().locator('.rank-footer').innerText(), /5 \/ [78]/)
-    assert.match(await page.locator('.expiry-panel .rank-footer').innerText(), /5 \/ 7/)
+    assert.equal(await page.locator('.rank-footer').count(), 0)
     assert.ok((await page.locator('.insight-top').boundingBox()).height <= 260)
     const block = page.locator('.probe-segments .segment-good').first()
     assert.ok((await block.boundingBox()).height <= 4)
@@ -428,7 +457,7 @@ try {
     const ink = await toRgb(color)
     assert.equal(await page.locator('.flow-legend b').first().evaluate(el => getComputedStyle(el).color), ink)
     assert.equal(await page.locator('.expiry-table tbody tr:not(.expiry-urgent) td:last-child').first().evaluate(el => getComputedStyle(el).color), ink)
-    assert.equal(count(entry, '/api/servers'), 1); assert.equal(count(entry, '/api/history/all'), 0)
+    assert.equal(count(entry, '/api/servers'), 1); assert.equal(detailHistoryCount(entry), 0)
     assert.deepEqual(entry.errors, []); await entry.context.close()
   })
   await test('latency opens first, lane selection and machine tab reuse history and socket', async () => {
@@ -450,9 +479,9 @@ try {
     await page.locator('.machine-overview').waitFor()
     await page.getByRole('tab', { name: '机器信息', exact: true }).press('ArrowLeft')
     assert.equal(await page.getByRole('tab', { name: '延迟监控', exact: true }).getAttribute('aria-selected'), 'true')
-    assert.equal(count(entry, '/api/server'), 1); assert.equal(count(entry, '/api/history/all'), 1); assert.equal(entry.sockets().length, 1)
+    assert.equal(count(entry, '/api/server'), 1); assert.equal(detailHistoryCount(entry), 1); assert.equal(entry.sockets().length, 1)
     await page.getByLabel('历史时间范围').selectOption('1')
-    await waitFor(() => count(entry, '/api/history/all') === 2)
+    await waitFor(() => detailHistoryCount(entry) === 2)
     await page.setViewportSize({ width: 1440, height: 1000 }); await page.screenshot({ path: 'test-results/latency-1440.png' })
     await page.setViewportSize({ width: 320, height: 900 }); await page.screenshot({ path: 'test-results/latency-320.png' })
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
@@ -532,7 +561,7 @@ try {
     assert.equal(Math.round((await facts.nth(0).boundingBox()).y), Math.round((await facts.nth(1).boundingBox()).y))
     assert.ok((await facts.nth(2).boundingBox()).y > (await facts.nth(0).boundingBox()).y)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
-    assert.equal(count(entry, '/api/servers'), 1); assert.equal(count(entry, '/api/history/all'), 1)
+    assert.equal(count(entry, '/api/servers'), 1); assert.equal(detailHistoryCount(entry), 1)
     assert.deepEqual(entry.errors, []); await entry.context.close()
   })
   await test('four compact summary cards show traffic busiest node and remove extra totals', async () => {
@@ -554,7 +583,7 @@ try {
     await page.setViewportSize({ width: 320, height: 1000 })
     await page.locator('.header').screenshot({ path: 'test-results/header-320.png' })
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
-    assert.equal(count(entry, '/api/servers'), 1); assert.equal(count(entry, '/api/history/all'), 0); assert.equal(count(entry, '/api/config'), 1)
+    assert.equal(count(entry, '/api/servers'), 1); assert.equal(detailHistoryCount(entry), 0); assert.equal(count(entry, '/api/config'), 1)
     assert.deepEqual(entry.errors, []); await entry.context.close()
   })
   await test('table separates OS and renewal while settings remain removed', async () => {
