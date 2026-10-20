@@ -1,0 +1,17 @@
+name = "cfsm-ip-quality"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[services]]
+binding = "MONITOR"
+service = "YOUR_EXISTING_CFSM_WORKER_NAME"
+
+[[d1_databases]]
+binding = "IPQ_DB"
+database_name = "cfsm-ip-quality"
+database_id = "YOUR_NEW_REPORT_DATABASE_ID"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.sh"]
+fallthrough = true

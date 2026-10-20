@@ -6,9 +6,9 @@
 
 在原版管理后台的“自定义主题 URL”中填入构建产物地址：
 
-https://github.com/guboysky/cfsm-theme-ink/tree/6c5642e93e833464b25b0628e67ae6acaae75010
+https://github.com/guboysky/cfsm-theme-ink/tree/dist
 
-这是固定构建版本。持续跟随更新可使用 https://github.com/guboysky/cfsm-theme-ink/tree/dist 。不要填 main 源码分支。
+这是持续更新的构建分支；固定提交链接见对应发布消息。不要填 main 源码分支。
 
 ## 当前界面
 
@@ -21,19 +21,17 @@ https://github.com/guboysky/cfsm-theme-ink/tree/6c5642e93e833464b25b0628e67ae6ac
 - 弹窗支持放大、Esc、遮罩关闭和焦点恢复；关闭后保留首页筛选和滚动位置。
 - 详情新增“IP 质量”标签，支持 IPQuality JSON 归档的基本信息、来源评分、风险矩阵、流媒体与 AI、邮件与黑名单、原始归档；无报告显示“未检测”。
 
-## IP 质量报告（第一阶段）
+## IP 质量自动检测
 
-本阶段完成详情展示与真实报告导入，不包含节点检测程序、定时任务或报告上传服务。查看、切换报告不执行网络检测，不增加轮询或 WebSocket。未配置报告的节点保持未检测状态；演示节点也不自动填充虚构的质量结果。
+自动检测通过独立接入 Worker 与 Linux 定时任务实现，保留原探针后台和数据库。Cloudflare 控制台部署、服务绑定、节点安装步骤见 [自动检测接入说明](integrations/ip-quality/README.md)。接入后，管理员可在节点详情生成专用凭证与安装命令，每天自动上传 IPv4 / IPv6 报告，按需查看约 30 天归档。
 
-在详情“IP 质量 → 导入报告”选择该节点的 [xykt/IPQuality](https://github.com/xykt/IPQuality) JSON 输出，支持单份对象或最多 100 份报告组成的数组，文件上限 2 MB。文件仅保留在本次弹窗内存，关闭即清除，不上传、不写入浏览器持久存储。多份归档可通过选择器切换（包括分别生成的 IPv4 / IPv6 报告）。
+自动接口仅在后端明确返回 ip_quality_enabled 时使用；旧后端不会请求不存在的接口。报告按节点和后端隔离，首次点击“IP 质量”读取，缓存 5 分钟；实时状态变化不重查，刷新只读取归档，不触发检测。报告不进入原版 WebSocket。自动接入增加 /api/ip-quality（只读）和 /api/ip-quality/setup（管理员生成凭证），原版鉴权仍负责读取权限。
 
-兼容原始结构：Head（IP、Time、Version）、Info、Type（Usage / Company）、Score、Factor、Media、Mail。至少应有 Head.IP 及一项有效报告内容。null / 缺失显示无数据，0 分保留为 0；平台部分支持、受限和超时分别展示，不将超时标为通过。概览默认隐藏部分 IP，原始归档保留源数据。
-
-为后续采集端预留节点数据字段 `ip_quality_reports`（单份对象或数组），以及当前后端配置 `theme_options.ip_quality_reports[节点ID]` 的兼容读取；节点字段优先，后端之间不共享。前端不会自动写入这些字段，也不假定原版后端已经支持它们。正式自动化接入仍需部署采集与存储服务，优先采用按需读取归档的接口，避免把整份报告随实时状态推送。报告会对有权读取它的访问者可见，发布前应按实际需求裁剪原始字段。
+也可导入已有的 [IPQuality](https://github.com/xykt/IPQuality) JSON（单份对象或最多 100 份报告组成的数组，文件上限 2 MB）。导入只保留在本次弹窗内存，关闭即清除，不上传、不写浏览器持久存储。兼容 Head、Info、Type、Score、Factor、Media、Mail；0 分与 false 保留，null / 缺失显示无数据，平台部分支持与超时单独展示。
 
 ## 数据与权限
 
-仅使用 /api/config、/api/servers、/api/server、/api/history/all、/api/ws、/api/theme_options。配置与首页列表缓存，无 REST 定时轮询；为满足固定 10 分钟趋势，首页对允许显示流量的每个节点首次读取一次 hours=0.167 历史（并发上限 3），随后仅合并原有实时推送，切换节点 / 方向不重查；首页弹窗共用已有实时连接，独立详情仅订阅本节点。隐藏时停止连接和未开始的历史任务，可见时只补当前页面状态并完成尚未开始的初始历史任务；已读取的历史不重查；达到连接时限后由用户主动继续。
+基础监控使用 /api/config、/api/servers、/api/server、/api/history/all、/api/ws、/api/theme_options；自动检测按上节的可选接口接入。配置与首页列表缓存，无 REST 定时轮询；为满足固定 10 分钟趋势，首页对允许显示流量的每个节点首次读取一次 hours=0.167 历史（并发上限 3），随后仅合并原有实时推送，切换节点 / 方向不重查；首页弹窗共用已有实时连接，独立详情仅订阅本节点。隐藏时停止连接和未开始的历史任务，可见时只补当前页面状态并完成尚未开始的初始历史任务；已读取的历史不重查；达到连接时限后由用户主动继续。
 
 保留后端流量、到期、费用与线路显示开关；false / undefined 不展示探测值，null 为超时，0 为有效值。管理及登录使用对应后端 /admin#/admin。地区旗帜和 OS 图标从后端读取。
 

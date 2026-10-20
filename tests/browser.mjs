@@ -695,6 +695,46 @@ try {
     assert.deepEqual(entry.errors, [])
     await entry.context.close()
   })
+  await test('automatic quality reports load lazily, cache live updates and expose setup only to admins', async () => {
+    const entry = await contextFor('public-off'), { page } = entry
+    let reads = 0, setups = 0
+    await page.route('**/api/config', async route => {
+      const response = await route.fetch(), data = await response.json()
+      data.ip_quality_enabled = true; data.authorization = true
+      await route.fulfill({ response, json: data })
+    })
+    const archive = date => ({ Head: { IP: '192.0.*.*', Time: date + 'T03:00:00Z', Version: 'fixture' }, Info: { ASN: date === '2026-10-19' ? 'AS-OLD' : 'AS-CURRENT' } })
+    await page.route('**/api/ip-quality?*', async route => {
+      ++reads; const date = new URL(route.request().url()).searchParams.get('date') || '2026-10-20'
+      await route.fulfill({ json: { reports: [archive(date)], archives: [{ day: '2026-10-20' }, { day: '2026-10-19' }], configured: true, states: [{ family: 'v4', attempt_at: Date.now(), success_at: Date.now(), error: null }, { family: 'v6', attempt_at: Date.now(), error: 'no_route' }] } })
+    })
+    await page.route('**/api/ip-quality/setup?*', async route => {
+      ++setups; assert.equal(route.request().method(), 'POST')
+      await route.fulfill({ json: { token: 'a'.repeat(64), command: 'echo fixture-install-command' } })
+    })
+    await page.goto(origin); await page.locator('.reference-card').first().waitFor()
+    await page.locator('.reference-card').first().click(); await page.locator('.detail-view-switch').waitFor()
+    assert.equal(reads, 0)
+    await page.getByRole('tab', { name: 'IP 质量', exact: true }).click(); await page.locator('.ipq-facts').waitFor()
+    assert.equal(reads, 1); assert.match(await page.locator('.ipq-facts').innerText(), /AS-CURRENT/)
+    await page.waitForTimeout(2200); assert.equal(reads, 1)
+    assert.match(await page.locator('.ipq-auto-status').innerText(), /未配置此网络出口/)
+    await page.getByRole('tab', { name: '机器信息', exact: true }).click(); await page.getByRole('tab', { name: 'IP 质量', exact: true }).click()
+    assert.equal(reads, 1)
+    await page.locator('.ipq-auto-status select').selectOption('2026-10-19')
+    await page.waitForFunction(() => document.querySelector('.ipq-facts')?.textContent.includes('AS-OLD'))
+    assert.equal(reads, 2)
+    await page.getByRole('button', { name: '自动检测接入', exact: true }).click()
+    await page.getByRole('button', { name: '生成节点安装信息', exact: true }).click()
+    await page.getByLabel('节点安装命令', { exact: true }).waitFor()
+    assert.equal(setups, 1)
+    assert.equal(await page.getByLabel('报告上传凭证', { exact: true }).inputValue(), 'a'.repeat(64))
+    await page.locator('.detail-dialog').screenshot({ path: 'test-results/ip-quality-automatic-1440.png' })
+    await page.setViewportSize({ width: 375, height: 1000 })
+    assert.equal(await page.locator('.detail-dialog-content').evaluate(el => el.scrollWidth > el.clientWidth), false)
+    assert.deepEqual(entry.errors, [])
+    await entry.context.close()
+  })
 } finally {
   await browser.close()
   for (const ws of allSockets) ws.terminate()

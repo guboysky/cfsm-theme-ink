@@ -3,10 +3,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 function files(dir) { return readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(dir, entry.name)) : [join(dir, entry.name)]) }
 describe('theme boundaries', () => {
-  it('uses only the six permitted API paths and no REST polling', () => {
+  it('uses the original APIs plus the authorized IP quality extension, without REST polling', () => {
     const source = files('src').map(path => readFileSync(path, 'utf8')).join('\n')
-    const paths = [...new Set(source.match(/\/api\/[a-z_]+(?:\/[a-z_]+)?/g))].sort()
-    expect(paths).toEqual(['/api/config', '/api/history/all', '/api/server', '/api/servers', '/api/theme_options', '/api/ws'].sort())
+    const paths = [...new Set(source.match(/\/api\/[a-z_-]+(?:\/[a-z_-]+)?/g))].sort()
+    expect(paths).toEqual(['/api/config', '/api/history/all', '/api/server', '/api/servers', '/api/theme_options', '/api/ws', '/api/ip-quality', '/api/ip-quality/setup'].sort())
     expect(source).not.toContain('setInterval')
     expect(source).not.toMatch(/location\.reload/)
     expect(source).not.toMatch(/\/admin\/api|save_settings|updateDatabase|clearHistory/)
