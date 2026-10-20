@@ -117,7 +117,8 @@ async function handle(request, env) {
       const token = randomToken()
       await env.IPQ_DB.prepare('INSERT INTO ipq_credentials VALUES (?,?,?) ON CONFLICT(node_id) DO UPDATE SET token_hash=excluded.token_hash,created_at=excluded.created_at').bind(node, await sha256(token), Date.now()).run()
       const base = url.origin
-      return json({ token, command: `curl -fsSL ${quote(base + '/ip-quality/install.sh')} -o /tmp/cfsm-ipq-install.sh && sudo bash /tmp/cfsm-ipq-install.sh --url ${quote(base)} --node ${quote(node)}` }, 200, gate.response)
+      const install = `bash "$ipq_file" --url ${quote(base)} --node ${quote(node)}`
+      return json({ token, command: `ipq_file=$(mktemp) && curl -fsSL ${quote(base + '/ip-quality/install.sh')} -o "$ipq_file" && if [ "$(id -u)" = 0 ]; then ${install}; else sudo ${install}; fi` }, 200, gate.response)
     }
     const day = url.searchParams.get('date')
     if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: 'Invalid archive date' }, 400, gate.response)
