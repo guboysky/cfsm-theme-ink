@@ -36,8 +36,19 @@ for family in v4 v6; do
     # No self-update, dependency installation, full-IP output or public report upload.
     timeout --kill-after=10s 12m bash "$engine" "-$flag" -j -p -n -E > "$output" 2> "$work/$family.log" || result=$?
     if [[ "$result" -eq 124 || "$result" -eq 137 ]]; then code='timeout'
+    elif jq -e 'type=="object" and (.Head.IP|type=="string") and ([.Info,.Score,.Factor,.Media,.Mail]|any(type=="object" and length>0))' "$output" >/dev/null 2>&1; then
+      # IPQuality's final disabled IPv6 condition can exit 1 after a complete
+      # IPv4 JSON report. Validate the report before interpreting that exit code.
+      if [[ "$result" -ne 0 ]]; then echo "$family: valid report received (collector exit $result)." >&2; fi
     elif [[ "$result" -ne 0 ]]; then code='collector_failed'
-    elif ! jq -e 'type=="object" and (.Head.IP|type=="string") and ([.Info,.Score,.Factor,.Media,.Mail]|any(type=="object" and length>0))' "$output" >/dev/null 2>&1; then code='invalid_output'
+    else code='invalid_output'
+    fi
+    if [[ -n "$code" ]]; then
+      # Bounded, private diagnostics; never include config or upload headers.
+      { printf 'family=%s exit=%s reason=%s\n' "$family" "$result" "$code"; tail -c 12000 "$work/$family.log"; } > "$state/last-error-$family.log"
+      echo "$family: collector exit $result; diagnostics: $state/last-error-$family.log" >&2
+    else
+      rm -f -- "$state/last-error-$family.log"
     fi
   fi
   if [[ -n "$code" ]]; then
