@@ -13,6 +13,7 @@ import MachineOverview from '../components/MachineOverview.vue'
 import MetricChart from '../components/MetricChart.vue'
 import LatencyMonitor from '../components/LatencyMonitor.vue'
 import ConnectionNotice from '../components/ConnectionNotice.vue'
+import IpQuality from '../components/IpQuality.vue'
 const props = defineProps({ id: String })
 const route = useRoute()
 const homeMonitor = inject(monitorContext)
@@ -20,10 +21,14 @@ const router = useRouter()
 const shared = homeMonitor?.value
 const { records, rows, hours, busy, historyBusy, error, states, continueLive, pauseLive, reconnect, changeHours } = shared ? useSharedDetail(shared, props.id, route.query.site) : useMonitor({ id: props.id, base: route.query.site })
 const dialog = ref(null), expanded = ref(false), activeView = ref('latency')
+const detailTabs = computed(() => [['latency', t('延迟监控', 'Latency monitoring')], ['machine', t('机器信息', 'Machine information')], ['quality', t('IP 质量', 'IP quality')]])
+const viewLabel = computed(() => detailTabs.value.find(tab => tab[0] === activeView.value)?.[1])
 function switchTab(event) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
-  activeView.value = event.key === 'Home' ? 'latency' : event.key === 'End' ? 'machine' : activeView.value === 'latency' ? 'machine' : 'latency'
+  const index = detailTabs.value.findIndex(tab => tab[0] === activeView.value)
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? detailTabs.value.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + detailTabs.value.length) % detailTabs.value.length
+  activeView.value = detailTabs.value[next][0]
   nextTick(() => dialog.value?.querySelector('[role=tab][aria-selected=true]')?.focus())
 }
 const previousFocus = document.activeElement
@@ -65,16 +70,17 @@ const hasDisk = computed(() => server.value?.disk || rows.value.some(row => row.
 </script>
 <template>
   <Teleport to="body"><div class="detail-overlay" @click.self="close"><section ref="dialog" class="detail-dialog" :class="{ expanded }" role="dialog" aria-modal="true" aria-labelledby="detail-dialog-title" tabindex="-1">
-    <div class="detail-dialog-toolbar"><div class="dialog-title-block"><img v-if="server && /^[a-z]{2}$/i.test(server.region || '')" class="dialog-region-flag" :src="assetUrl(server._base, '/flags/' + server.region.toLowerCase() + '.svg')" :alt="server.region" /><Icon v-else name="Globe" :size="18" /><div class="dialog-title-copy"><h2 id="detail-dialog-title">{{ server?.name || t('节点详情', 'Server details') }} · {{ activeView === 'latency' ? t('延迟监控', 'Latency monitoring') : t('机器信息', 'Machine information') }}</h2><div v-if="server" class="dialog-machine-summary"><img v-if="systemImage" :src="systemImage" alt="" /><span>{{ server.os || '—' }} · {{ server.cpu_cores || '—' }} {{ t('核', 'cores') }}</span><span>{{ server.ip_v4 === '1' ? 'IPv4' : '' }} {{ server.ip_v6 === '1' ? 'IPv6' : '' }}</span><span>{{ t('进程', 'Processes') }} {{ server.processes ?? '—' }} · TCP {{ server.tcp_conn ?? '—' }} · UDP {{ server.udp_conn ?? '—' }}</span><span v-if="server._sys.show_price === true && String(server.price ?? '').trim()">{{ ['0', '-1'].includes(String(server.price)) ? t('免费', 'Free') : (server.currency || '') + server.price + ' / ' + (server.billing_cycle || '') }}</span></div></div></div><div class="dialog-window-tools"><span v-if="server" class="dialog-online-status" :class="{ offline: !online(server) }"><i></i>{{ online(server) ? t('在线', 'Online') : t('离线', 'Offline') }}</span><button class="icon-button" :aria-label="expanded ? t('还原窗口', 'Restore window') : t('放大窗口', 'Expand window')" @click="expanded = !expanded"><Icon :name="expanded ? 'Minimize2' : 'Maximize2'" :size="15" /></button><button class="icon-button back-link" :aria-label="t('关闭详情弹窗', 'Close server details')" @click="close"><Icon name="X" :size="18" /></button></div></div>
+    <div class="detail-dialog-toolbar"><div class="dialog-title-block"><img v-if="server && /^[a-z]{2}$/i.test(server.region || '')" class="dialog-region-flag" :src="assetUrl(server._base, '/flags/' + server.region.toLowerCase() + '.svg')" :alt="server.region" /><Icon v-else name="Globe" :size="18" /><div class="dialog-title-copy"><h2 id="detail-dialog-title">{{ server?.name || t('节点详情', 'Server details') }} · {{ viewLabel }}</h2><div v-if="server" class="dialog-machine-summary"><img v-if="systemImage" :src="systemImage" alt="" /><span>{{ server.os || '—' }} · {{ server.cpu_cores || '—' }} {{ t('核', 'cores') }}</span><span>{{ server.ip_v4 === '1' ? 'IPv4' : '' }} {{ server.ip_v6 === '1' ? 'IPv6' : '' }}</span><span>{{ t('进程', 'Processes') }} {{ server.processes ?? '—' }} · TCP {{ server.tcp_conn ?? '—' }} · UDP {{ server.udp_conn ?? '—' }}</span><span v-if="server._sys.show_price === true && String(server.price ?? '').trim()">{{ ['0', '-1'].includes(String(server.price)) ? t('免费', 'Free') : (server.currency || '') + server.price + ' / ' + (server.billing_cycle || '') }}</span></div></div></div><div class="dialog-window-tools"><span v-if="server" class="dialog-online-status" :class="{ offline: !online(server) }"><i></i>{{ online(server) ? t('在线', 'Online') : t('离线', 'Offline') }}</span><button class="icon-button" :aria-label="expanded ? t('还原窗口', 'Restore window') : t('放大窗口', 'Expand window')" @click="expanded = !expanded"><Icon :name="expanded ? 'Minimize2' : 'Maximize2'" :size="15" /></button><button class="icon-button back-link" :aria-label="t('关闭详情弹窗', 'Close server details')" @click="close"><Icon name="X" :size="18" /></button></div></div>
     <div class="detail-dialog-content">
   <ConnectionNotice :states="states" @continue="continueLive" @pause="pauseLive" @reconnect="reconnect" />
   <div v-if="error" class="notice error-text" role="alert">{{ error }}</div>
   <div v-if="busy" class="empty">{{ t('正在读取节点状态…', 'Loading server status…') }}</div>
   <template v-else-if="server">
     <div class="detail-view-switch">
-      <div role="tablist" :aria-label="t('节点信息切换', 'Server views')" @keydown="switchTab"><button id="latency-tab" role="tab" aria-controls="latency-panel" :aria-selected="activeView === 'latency'" :tabindex="activeView === 'latency' ? 0 : -1" @click="activeView = 'latency'">{{ t('延迟监控', 'Latency monitoring') }}</button><button id="machine-tab" role="tab" aria-controls="machine-panel" :aria-selected="activeView === 'machine'" :tabindex="activeView === 'machine' ? 0 : -1" @click="activeView = 'machine'">{{ t('机器信息', 'Machine information') }}</button></div>
-      <div class="detail-range-tools"><div class="detail-range-presets"><button v-for="value in [1, 6, 12, 24, 168]" :key="value" :class="{ selected: hours === value }" :aria-pressed="hours === value" :disabled="historyBusy" @click="changeHours(value)">{{ ranges.find(range => range[0] === value)?.[1] }}</button></div><label class="range-label"><Icon name="Clock" :size="14" /><select :value="hours" :disabled="historyBusy" :aria-label="t('历史时间范围', 'History range')" @change="changeHours(Number($event.target.value))"><option v-for="[value, label] in ranges" :key="value" :value="value">{{ label }}</option></select><span v-if="historyBusy">{{ t('读取中…', 'Loading…') }}</span></label></div>
+      <div role="tablist" :aria-label="t('节点信息切换', 'Server views')" @keydown="switchTab"><button v-for="[key, label] in detailTabs" :id="key + '-tab'" :key="key" role="tab" :aria-controls="key + '-panel'" :aria-selected="activeView === key" :tabindex="activeView === key ? 0 : -1" @click="activeView = key">{{ label }}</button></div>
+      <div v-show="activeView !== 'quality'" class="detail-range-tools"><div class="detail-range-presets"><button v-for="value in [1, 6, 12, 24, 168]" :key="value" :class="{ selected: hours === value }" :aria-pressed="hours === value" :disabled="historyBusy" @click="changeHours(value)">{{ ranges.find(range => range[0] === value)?.[1] }}</button></div><label class="range-label"><Icon name="Clock" :size="14" /><select :value="hours" :disabled="historyBusy" :aria-label="t('历史时间范围', 'History range')" @change="changeHours(Number($event.target.value))"><option v-for="[value, label] in ranges" :key="value" :value="value">{{ label }}</option></select><span v-if="historyBusy">{{ t('读取中…', 'Loading…') }}</span></label></div>
     </div>
+    <section v-show="activeView === 'quality'" id="quality-panel" role="tabpanel" aria-labelledby="quality-tab"><IpQuality :server="server" /></section>
     <section v-show="activeView === 'latency'" id="latency-panel" role="tabpanel" aria-labelledby="latency-tab"><LatencyMonitor :server="server" :rows="rows" /></section>
     <section v-show="activeView === 'machine'" id="machine-panel" role="tabpanel" aria-labelledby="machine-tab">
     <MachineOverview :server="server" :rows="rows" />

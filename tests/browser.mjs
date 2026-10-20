@@ -6,7 +6,8 @@ import { chromium } from '@playwright/test'
 import { WebSocketServer } from 'ws'
 
 const logs = new Map(), socketLogs = [], allSockets = new Set()
-const ports = [4325, 4326]
+const firstPort = Number(process.env.TEST_PORT || 4325)
+const ports = [firstPort, firstPort + 1]
 const origin = `http://127.0.0.1:${ports[0]}`
 const secondOrigin = `http://127.0.0.1:${ports[1]}`
 const sessions = new Map()
@@ -75,7 +76,7 @@ const servers = await Promise.all(ports.map(async (port, backend) => {
       const path = url.pathname === '/' || url.pathname === '/index.html' ? 'index.html' : decodeURIComponent(url.pathname).slice(1)
       if (path.includes('..') || (path !== 'index.html' && !path.startsWith('assets/'))) { res.writeHead(404); res.end(); return }
       let data = await readFile(resolve('dist', path))
-      if (path === 'index.html' && scenario.includes('multi')) data = Buffer.from(data.toString().replace('name="apiBase" content=""', `name="apiBase" content="${origin},${secondOrigin}"`).replace('connect-src &#39;self&#39;', `connect-src &#39;self&#39; ${origin} ${secondOrigin} ws://127.0.0.1:4325 ws://127.0.0.1:4326`).replace('img-src &#39;self&#39;', `img-src &#39;self&#39; ${secondOrigin}`))
+      if (path === 'index.html' && scenario.includes('multi')) data = Buffer.from(data.toString().replace('name="apiBase" content=""', `name="apiBase" content="${origin},${secondOrigin}"`).replace('connect-src &#39;self&#39;', `connect-src &#39;self&#39; ${origin} ${secondOrigin} ${origin.replace('http:', 'ws:')} ${secondOrigin.replace('http:', 'ws:')}`).replace('img-src &#39;self&#39;', `img-src &#39;self&#39; ${secondOrigin}`))
       res.setHeader('Content-Type', ({ '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css' })[extname(path)] || 'application/octet-stream')
       res.end(data)
     } catch (error) { res.writeHead(500); res.end(error.message) }
@@ -625,6 +626,73 @@ try {
     await page.locator('.back-link').click(); await page.locator('.header .summary-card').first().waitFor()
     assert.equal(await page.locator('.header .summary-card').count(), 4)
     assert.equal(count(entry, '/api/servers'), 1); assert.equal(count(entry, '/api/config'), 1)
+    await entry.context.close()
+  })
+  await test('IP quality import preserves unknowns, keyboard navigation and request boundaries', async () => {
+    const entry = await contextFor('public-off'), { page } = entry
+    await page.goto(origin); await page.locator('.reference-card').first().waitFor()
+    await page.locator('.reference-card').first().click(); await page.locator('.detail-view-switch').waitFor()
+    const quality = page.getByRole('tab', { name: 'IP 质量', exact: true })
+    await quality.click(); await page.getByText('尚无 IP 质量报告', { exact: true }).waitFor()
+    assert.equal(await page.locator('.detail-range-tools').isVisible(), false)
+    const requests = count(entry, '/api/history/all'), sockets = entry.sockets().length
+    await quality.press('ArrowLeft'); assert.equal(await page.getByRole('tab', { name: '机器信息', exact: true }).getAttribute('aria-selected'), 'true')
+    await page.getByRole('tab', { name: '机器信息', exact: true }).press('End')
+    assert.equal(await quality.getAttribute('aria-selected'), 'true')
+    const data = { Head: { IP: '192.0.2.1', Time: '2026-10-20 01:00:00 UTC', Version: 'test-fixture' }, Info: { Region: { Name: 'Test region' }, City: { Name: 'Test city' }, ASN: 'AS0' }, Score: { IPQS: 0, AbuseIPDB: null }, Factor: { CountryCode: { IPQS: 'US', IPinfo: 'US' }, Proxy: { IPQS: true, IPinfo: false }, VPN: { IPQS: null } }, Media: { Netflix: { Status: 'Originals Only', Region: 'US' }, ChatGPT: { Status: 'Timeout' } }, Mail: { Port25: false, DNSBlacklist: { Total: 10, Clean: 10, Blacklisted: 0 } } }
+    const upload = value => page.locator('.ipq-file').setInputFiles({ name: 'report.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) })
+    await upload(data)
+    assert.match(await page.locator('.ipq-archive-bar').innerText(), /本地预览/)
+    assert.match(await page.locator('.ipq-facts').innerText(), /192.0.\*.\*/)
+    await page.getByRole('tab', { name: '风控评分', exact: true }).click()
+    assert.equal(await page.locator('.ipq-score strong').first().innerText(), '0')
+    assert.equal(await page.locator('.ipq-score strong').nth(1).innerText(), '—')
+    await page.getByRole('tab', { name: '风险因子', exact: true }).click()
+    assert.equal(await page.locator('.ipq-badge.detected').count(), 1)
+    assert.equal(await page.locator('.ipq-badge.clear').count(), 1)
+    assert.equal(await page.locator('.ipq-badge.unknown').count(), 2)
+    await page.getByRole('tab', { name: '流媒体与 AI', exact: true }).click()
+    assert.match(await page.locator('.ipq-service').first().innerText(), /部分支持/)
+    assert.match(await page.locator('.ipq-service').nth(1).innerText(), /未确认/)
+    await page.locator('.detail-dialog').screenshot({ path: 'test-results/ip-quality-1440.png' })
+    await page.setViewportSize({ width: 375, height: 850 })
+    assert.equal(await page.locator('.detail-dialog-content').evaluate(el => el.scrollWidth > el.clientWidth), false)
+    await page.locator('.detail-dialog').screenshot({ path: 'test-results/ip-quality-375.png' })
+    await page.getByRole('tab', { name: '原始归档', exact: true }).click()
+    assert.match(await page.locator('.ipq-raw').innerText(), /192.0.2.1/)
+    await upload({ unexpected: true })
+    assert.match(await page.locator('.ip-quality [role=alert]').innerText(), /格式不支持/)
+    assert.equal(await page.locator('.ipq-raw').isVisible(), true)
+    assert.equal(count(entry, '/api/history/all'), requests)
+    assert.equal(entry.sockets().length, sockets)
+    assert.equal(count(entry, '/api/theme_options'), 0)
+    assert.deepEqual(entry.errors, [])
+    await entry.context.close()
+  })
+  await test('IP quality node archives switch without requests and stay separate from local imports', async () => {
+    const entry = await contextFor('public-off'), { page } = entry
+    const latest = { Head: { IP: '192.0.2.2', Time: '2026-10-20 00:00:00 UTC' }, Info: { ASN: 'AS-NEW' } }
+    const older = { Head: { IP: '2001:db8::2', Time: '2026-10-19 00:00:00 UTC' }, Info: { ASN: 'AS-OLD' } }
+    await page.route('**/api/server?*', async route => {
+      const response = await route.fetch(), data = await response.json()
+      data.ip_quality_reports = [older, latest]
+      await route.fulfill({ response, json: data })
+    })
+    await page.goto(origin); await page.locator('.reference-card').first().waitFor()
+    await page.locator('.reference-card').first().click(); await page.locator('.detail-view-switch').waitFor()
+    await page.getByRole('tab', { name: 'IP 质量', exact: true }).click()
+    assert.match(await page.locator('.ipq-facts').innerText(), /AS-NEW/)
+    const requests = count(entry, '/api/server')
+    await page.getByLabel('选择检测归档', { exact: true }).selectOption('1')
+    assert.match(await page.locator('.ipq-facts').innerText(), /AS-OLD/)
+    await page.locator('.ipq-file').setInputFiles({ name: 'report.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ ...latest, Info: { ASN: 'AS-LOCAL' } })) })
+    assert.match(await page.locator('.ipq-facts').innerText(), /AS-LOCAL/)
+    await page.getByRole('button', { name: '返回节点报告', exact: true }).click()
+    assert.match(await page.locator('.ipq-facts').innerText(), /AS-NEW/)
+    assert.equal(count(entry, '/api/server'), requests)
+    await page.setViewportSize({ width: 320, height: 850 })
+    assert.equal(await page.locator('.detail-dialog-content').evaluate(el => el.scrollWidth > el.clientWidth), false)
+    assert.deepEqual(entry.errors, [])
     await entry.context.close()
   })
 } finally {
